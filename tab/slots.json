@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "note": "The public slot list of the shared Mod Settings band. One line per row that keeps its value in the save. Never reuse or move a slot once a release used it; add new ones at the end. Checked by modsettings/src/manifest.js (no two slots share a bit or a priority range).",
+  "band": {
+    "base": -8192,
+    "recordSize": 512,
+    "bitsPerRecord": 9,
+    "records": 2,
+    "audit": "CrossArcData Values -8192..-7169: read by no body of Playoff Customizer 1.3.0, Dynasty Customizer 1.1.0, AIO Dynasty Mod 1.3.1 / 1.4.0, Conference Customizer 1.0.2, BETA ZEO 1.0, Dynasty Extensions 0.1.7 + its five patches (dynasty-extensions/tools/band-audit.js --claimed, 2026-11-05)"
+  },
+  "request": {
+    "typeName": "Legacy Leaderboard",
+    "description": "Legacy Leaderboard",
+    "forms": 8,
+    "markerBase": 16515072,
+    "markerSpan": 131072
+  },
+  "slots": [
+    { "mod": "dynasty-extensions", "row": "ws", "record": 0, "bit": 0, "width": 1, "prio": 0, "status": "reserved", "why": "Step 2: Weekly Strategy On/Off moves here from DE's own request; Step 1 reads DE's own request" },
+    { "mod": "dynasty-extensions", "row": "pb", "record": 0, "bit": 1, "width": 1, "prio": 2, "status": "reserved", "why": "Step 2: Press Box On/Off" },
+    { "mod": "preseason-weeks", "row": "spring", "record": 0, "bit": 2, "width": 2, "prio": 4, "status": "reserved", "why": "Step 2: Spring Game mode (the same slot for Preseason Weeks alone and inside Dynasty Extensions)" },
+    { "mod": "modsettings-demo", "row": "alpha", "record": 0, "bit": 4, "width": 1, "prio": 8, "status": "test" },
+    { "mod": "modsettings-demo", "row": "beta", "record": 0, "bit": 5, "width": 2, "prio": 10, "status": "test" },
+    { "mod": "modsettings-demo", "row": "gamma", "record": 0, "bit": 7, "width": 1, "prio": 14, "status": "test" }
+  ]
+}

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mod Settings</title>
+<!-- Mod Settings companion page (layer 1). A local page: open it from disk in Microsoft Edge or Google Chrome. It reads and writes ONLY
+     the folder you pick (Plugins\ModSettings): it reads mods\*.json and modsettings-status.json, and writes values.json. No server, no network.
+     The logic lives in the ms-core script below; tools/ms-set.js and test/companion-test.js load that same script (one source). -->
+<style>
+:root { --bg: #f6f6f3; --card: #ffffff; --ink: #1d1f1c; --muted: #61655d; --line: #dcdcd4; --accent: #2f6b3b; --accent-ink: #ffffff; --warn: #8a5a00; --warn-bg: #fff4dc; --bad: #9b2c22; --bad-bg: #fde9e6; --chip: #eef1ea; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161815; --card: #1f221e; --ink: #e8eae4; --muted: #a2a79c; --line: #34382f; --accent: #6fb47c; --accent-ink: #10140f; --warn: #e5b45a; --warn-bg: #2d2615; --bad: #f08a7e; --bad-bg: #351c19; --chip: #2a2e27; } }
+:root[data-theme="dark"] { --bg: #161815; --card: #1f221e; --ink: #e8eae4; --muted: #a2a79c; --line: #34382f; --accent: #6fb47c; --accent-ink: #10140f; --warn: #e5b45a; --warn-bg: #2d2615; --bad: #f08a7e; --bad-bg: #351c19; --chip: #2a2e27; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+.bar .grow { flex: 1 1 260px; min-width: 0; }
+.muted { color: var(--muted); }
+.note { border-radius: 10px; padding: 10px 12px; margin: 0 0 14px; }
+.note.warn { background: var(--warn-bg); color: var(--warn); }
+.note.bad { background: var(--bad-bg); color: var(--bad); }
+.note ul { margin: 6px 0 0 18px; padding: 0; }
+.mod { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 14px; overflow: hidden; }
+.mod h2 { font-size: 16px; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row .label { font-weight: 600; }
+.row .help { grid-column: 1 / -1; color: var(--muted); font-size: 13.5px; }
+.row .state { grid-column: 1 / -1; font-size: 13.5px; }
+.chip { display: inline-block; font-size: 12px; background: var(--chip); color: var(--muted); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-weight: 400; vertical-align: 1px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--line); padding: 6px 11px; background: transparent; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.pending { color: var(--warn); }
+.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
+@media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mod Settings</h1>
+  <p class="sub">Settings for the mods you have installed. Your choices are saved as you click.</p>
+
+  <div class="bar">
+    <div class="grow" id="folder">No folder open yet. Pick your <b>Plugins\ModSettings</b> folder (inside your Mod Manager folder).</div>
+    <button class="primary" id="open">Open folder</button>
+    <button id="reload" hidden>Reload</button>
+  </div>
+  <div id="nofsa" class="note bad" hidden>This page needs Microsoft Edge or Google Chrome (it reads and writes the folder you pick). Without them, use <code>node tools/ms-set.js</code>.</div>
+  <div id="game" class="note warn" hidden></div>
+  <div id="problems" class="note bad" hidden></div>
+  <div id="mods"></div>
+</main>
+
+<script id="ms-core">
+/* ms-core: the Mod Settings rules, shared by this page, tools/ms-set.js and the tests. Mirrors modsettings.dll (manifest spec v2). */
+const MsCore = (() => {
+  const BAND = { base: -8192, recordSize: 512, bits: 9, records: 2 };
+  const ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/, SHORT_RE = /^[a-z0-9]{1,2}$/;
+  const len = (s) => [...s].length;
+  const iniPathOk = (f) => typeof f === 'string' && f.length > 0 && f.length <= 200 && !/[:]/.test(f) && !/^[\\/]/.test(f) && /\.ini$/i.test(f) && f.split(/[\\/]/).every((p) => p && p !== '.' && p !== '..');
+  const iniKeyOk = (k) => typeof k === 'string' && /^[A-Za-z0-9_.-]{1,63}$/.test(k);
+  const iniValOk = (v) => typeof v === 'string' && v.length >= 1 && v.length <= 47 && !/[\r\n;#=]/.test(v);
+  const isInt = (v) => Number.isInteger(v);
+  /* one manifest object (already parsed) -> problems[]; rows (normalised) when there are none */
+  function checkManifest(m, fileName) {
+    const P = []; const where = fileName || '(manifest)';
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return { problems: [`${where}: the manifest must be a JSON object`], rows: [] };
+    if (m.schema !== 2) P.push(`${where}: schema must be 2`);
+    if (!ID_RE.test(m.id || '')) P.push(`${where}: id must be 2-40 characters: lower case letters, digits, '-'`);
+    else if (fileName && fileName.toLowerCase() !== `${m.id}.json`) P.push(`${where}: the file name must be <id>.json (${m.id}.json)`);
+    if (typeof m.title !== 'string' || !m.title || len(m.title) > 40) P.push(`${where}: title missing or longer than 40 characters`);
+    if (!Array.isArray(m.rows) || m.rows.length < 1 || m.rows.length > 64) { P.push(`${where}: rows must be an array of 1-64 rows`); return { problems: P, rows: [] }; }
+    const rows = []; const seen = new Set();
+    m.rows.forEach((r, k) => {
+      const tag = `${m.id}/${r && r.id}`;
+      if (!r || typeof r !== 'object') { P.push(`${where}: row ${k} is not an object`); return; }
+      if (!(ID_RE.test(r.id || '') || SHORT_RE.test(r.id || ''))) { P.push(`${where}: row ${k}: id must be lower case letters, digits, '-'`); return; }
+      if (seen.has(r.id)) P.push(`${tag}: the row id appears twice`); seen.add(r.id);
+      if (typeof r.label !== 'string' || !r.label || len(r.label) > 40) P.push(`${tag}: label missing or longer than 40 characters`);
+      if ('help' in r && (typeof r.help !== 'string' || len(r.help) > 400)) P.push(`${tag}: help must be text of at most 400 characters`);
+      if ('inert' in r && (typeof r.inert !== 'string' || len(r.inert) > 60)) P.push(`${tag}: inert must be text of at most 60 characters`);
+      if (!Array.isArray(r.options) || r.options.length < 2 || r.options.length > 8) { P.push(`${tag}: options must be 2-8 labels`); return; }
+      r.options.forEach((o, i) => { if (typeof o !== 'string' || !o || len(o) > 24) P.push(`${tag}: option ${i} must be 1-24 characters`); });
+      if (r.options.length === 2 && !(r.options[0] === 'Off' && r.options[1] === 'On')) P.push(`${tag}: a two-option row must be ["Off", "On"] (Off = 0, On = 1)`);
+      if (!isInt(r.default) || r.default < 0 || r.default >= r.options.length) { P.push(`${tag}: default must be an option index`); return; }
+      const row = { mod: m.id, id: r.id, label: r.label, help: r.help || '', inert: r.inert || '', options: r.options.slice(), default: r.default };
+      if (r.store === 'band') {
+        const b = r.band || {};
+        if (!isInt(b.record) || !isInt(b.bit) || !isInt(b.width)) { P.push(`${tag}: a band row needs "band": { "record", "bit", "width" } (its line in slots.json)`); return; }
+        if (b.record < 0 || b.record >= BAND.records || b.width < 1 || b.width > 3 || b.bit < 0 || b.bit + b.width > BAND.bits) { P.push(`${tag}: band record ${b.record} bit ${b.bit} width ${b.width} is outside the band`); return; }
+        if ((1 << b.width) < r.options.length) { P.push(`${tag}: width ${b.width} holds ${1 << b.width} values, the row has ${r.options.length} options`); return; }
+        if ('ini' in r) P.push(`${tag}: an ini binding is for global rows only`);
+        Object.assign(row, { store: 'band', record: b.record, bit: b.bit, width: b.width });
+      } else if (r.store === 'global') {
+        row.store = 'global';
+        if ('ini' in r) {
+          const i = r.ini || {};
+          if (!iniPathOk(i.file)) { P.push(`${tag}: ini.file must be an .ini path inside the Plugins folder (no drive, no '..')`); return; }
+          if (!iniKeyOk(i.key)) { P.push(`${tag}: ini.key must be 1-63 letters, digits, '_', '.', '-'`); return; }
+          if (!Array.isArray(i.values) || i.values.length !== r.options.length) { P.push(`${tag}: ini.values must list one value per option (${r.options.length})`); return; }
+          i.values.forEach((v, n) => { if (!iniValOk(v)) P.push(`${tag}: ini.values[${n}] must be 1-47 characters without ; # = or a line break`); });
+          row.ini = { file: i.file, key: i.key, values: i.values.slice() };
+        }
+      } else { P.push(`${tag}: store must be "band" (the value lives in the dynasty save) or "global" (values.json)`); return; }
+      rows.push(row);
+    });
+    return { problems: P, rows };
+  }
+  /* every manifest file [{ name, text }] -> { mods: [{ id, title, rows }], problems } with the DLL's order (names sorted, case-insensitive)
+   * and its clash rule (a band bit already used by an earlier manifest refuses the later one) */
+  function loadManifests(files) {
+    const out = { mods: [], problems: [] }; const bits = [];
+    for (const f of [...files].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))) {
+      let m; try { m = JSON.parse(f.text.replace(/^\uFEFF/, '')); } catch (e) { out.problems.push(`${f.name}: not valid JSON (${e.message})`); continue; }
+      const c = checkManifest(m, f.name); const P = c.problems.slice();
+      if (!P.length && out.mods.some((x) => x.id === m.id)) P.push(`${f.name}: a second manifest for ${m.id}`);
+      for (const r of c.rows.filter((x) => x.store === 'band')) for (const u of bits) if (u.record === r.record && u.bit < r.bit + r.width && r.bit < u.bit + u.width) P.push(`${r.mod}/${r.id}: band record ${r.record} bits ${r.bit}-${r.bit + r.width - 1} overlap ${u.mod}/${u.id}`);
+      if (P.length) { out.problems.push(...P); continue; }
+      bits.push(...c.rows.filter((x) => x.store === 'band'));
+      out.mods.push({ id: m.id, title: m.title, rows: c.rows });
+    }
+    return out;
+  }
+  function parseValues(text) {
+    if (!text) return { schema: 2, global: {}, dynasty: {} };
+    let v; try { v = JSON.parse(text.replace(/^\uFEFF/, '')); } catch (e) { return { schema: 2, global: {}, dynasty: {}, broken: true }; }
+    if (!v || typeof v !== 'object' || v.schema !== 2) return { schema: 2, global: {}, dynasty: {}, broken: true };
+    v.global = v.global && typeof v.global === 'object' ? v.global : {}; v.dynasty = v.dynasty && typeof v.dynasty === 'object' ? v.dynasty : {};
+    return v;
+  }
+  const maxSeq = (values, status) => {
+    let s = 0;
+    for (const m of Object.values(values.dynasty || {})) for (const r of Object.values(m || {})) if (r && isInt(r.seq) && r.seq > s) s = r.seq;
+    if (status && Array.isArray(status.rows)) for (const r of status.rows) if (isInt(r.applied_seq) && r.applied_seq > s) s = r.applied_seq;
+    return s;
+  };
+  /* a choice on the page -> values (returns the new object; the caller writes it) */
+  function choose(values, row, index, status) {
+    const v = JSON.parse(JSON.stringify(values)); delete v.broken;
+    if (!isInt(index) || index < 0 || index >= row.options.length) throw new Error(`${row.mod}/${row.id}: no option ${index}`);
+    if (row.store === 'global') { (v.global[row.mod] = v.global[row.mod] || {})[row.id] = index; }
+    else { (v.dynasty[row.mod] = v.dynasty[row.mod] || {})[row.id] = { value: index, seq: maxSeq(v, status) + 1 }; }
+    v.updated = new Date().toISOString(); return v;
+  }
+  function cancel(values, row) {
+    const v = JSON.parse(JSON.stringify(values)); delete v.broken;
+    if (v.dynasty[row.mod]) { delete v.dynasty[row.mod][row.id]; if (!Object.keys(v.dynasty[row.mod]).length) delete v.dynasty[row.mod]; }
+    return v;
+  }
+  /* what the page shows for a row: { value (the option in effect), from, pending (option waiting to land, or null), note } */
+  function view(row, values, status) {
+    if (row.store === 'global') {
+      const g = values.global[row.mod] && values.global[row.mod][row.id];
+      return isInt(g) && g >= 0 && g < row.options.length ? { value: g, from: 'your choice', pending: null } : { value: row.default, from: 'default', pending: null };
+    }
+    const st = status && Array.isArray(status.rows) ? status.rows.find((r) => r.mod === row.mod && r.row === row.id) : null;
+    const wish = values.dynasty[row.mod] && values.dynasty[row.mod][row.id];
+    const landed = st && wish && isInt(st.applied_seq) && st.applied_seq >= wish.seq;
+    const pending = wish && !landed ? wish.value : null;
+    if (st && st.from === 'dynasty' && isInt(st.value) && st.value >= 0) return { value: st.value < row.options.length ? st.value : row.default, from: 'this dynasty', pending };
+    if (st && st.from === 'record not there yet') return { value: row.default, from: 'not set up in this dynasty yet', pending, note: row.inert || "After this mod's first Advance in this dynasty" };
+    return { value: row.default, from: 'no dynasty loaded', pending };
+  }
+  function serialize(values) { const v = { schema: 2, global: values.global || {}, dynasty: values.dynasty || {} }; if (values.updated) v.updated = values.updated; return JSON.stringify(v, null, 2) + '\n'; }
+  /* a dynasty row's bits in a band record Value (the same math as the DLL and the expression readSnippet) */
+  const bitsOf = (value, row) => Math.floor((value - (BAND.base + BAND.recordSize * row.record)) / (1 << row.bit)) % (1 << row.width);
+  return { BAND, checkManifest, loadManifests, parseValues, choose, cancel, view, serialize, bitsOf, iniPathOk };
+})();
+if (typeof module !== 'undefined') module.exports = MsCore;
+</script>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let dir = null, model = null, values = null, status = null, timer = null;
+  if (!window.showDirectoryPicker) { $('nofsa').hidden = false; $('open').disabled = true; }
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const k of kids) if (k != null) e.append(k); return e; };
+  async function readText(handle, name) { try { const f = await handle.getFileHandle(name); return await (await f.getFile()).text(); } catch (e) { return null; } }
+  async function load() {
+    const files = [];
+    try { const mods = await dir.getDirectoryHandle('mods'); for await (const [name, h] of mods.entries()) if (h.kind === 'file' && /\.json$/i.test(name)) files.push({ name, text: await (await h.getFile()).text() }); } catch (e) { /* no mods folder yet */ }
+    model = MsCore.loadManifests(files);
+    values = MsCore.parseValues(await readText(dir, 'values.json'));
+    await loadStatus(); render();
+  }
+  async function loadStatus() { const t = await readText(dir, 'modsettings-status.json'); try { status = t ? JSON.parse(t) : null; } catch (e) { status = null; } }
+  async function save() {
+    const h = await dir.getFileHandle('values.json', { create: true }); const w = await h.createWritable(); await w.write(MsCore.serialize(values)); await w.close();
+  }
+  function gameLine() {
+    if (!status) return 'The game has not run with Mod Settings yet (no status file). Whole-game settings still apply.';
+    const d = status.dynasty || {};
+    const when = status.updated ? ` Status from ${new Date(status.updated).toLocaleTimeString()}.` : '';
+    if (status.source === 'plugin' || status.state === 'failed' || status.state === 'refused') return `Mod Settings is not active in the game: ${status.reason || status.state}.${when}`;
+    if (!d.seen) return `Game running, no dynasty read yet. Dynasty settings land when the dynasty hub refreshes or you open Roster or Schedule.${when}`;
+    return `Dynasty loaded (read at ${d.at} on ${String(d.flow || '').split('::')[0]}). Dynasty changes land there the next time the hub refreshes or you open Roster or Schedule; save the dynasty to keep them.${when}`;
+  }
+  function render() {
+    $('folder').textContent = `Folder: ${dir.name}`; $('reload').hidden = false;
+    $('game').hidden = false; $('game').textContent = gameLine();
+    const probs = [...model.problems, ...(status && status.manifests ? status.manifests.problems || [] : []).filter((p) => !model.problems.includes(p))];
+    if (values.broken) probs.unshift('values.json is not readable: it will be rewritten with your next choice.');
+    $('problems').hidden = !probs.length; $('problems').replaceChildren(el('b', {}, 'Some settings files have problems (their mods are left out):'), el('ul', {}, ...probs.map((p) => el('li', {}, p))));
+    const host = $('mods'); host.replaceChildren();
+    if (!model.mods.length) host.append(el('p', { class: 'muted' }, 'No mod has put a settings file in mods\\ yet.'));
+    for (const m of model.mods) {
+      const card = el('section', { class: 'mod' }, el('h2', {}, m.title));
+      for (const r of m.rows) {
+        const v = MsCore.view(r, values, status); const shown = v.pending != null ? v.pending : v.value;
+        const seg = el('div', { class: 'seg', role: 'group', 'aria-label': r.label });
+        r.options.forEach((o, i) => seg.append(el('button', { 'aria-pressed': String(i === shown), onclick: async () => { values = MsCore.choose(values, r, i, status); await save(); render(); } }, o)));
+        let state;
+        if (r.store === 'global') state = el('div', { class: 'state muted' }, `Whole game: ${r.options[v.value]} (${v.from}).`);
+        else {
+          const parts = [`Dynasty: ${v.from === 'this dynasty' ? `${r.options[v.value]} in this dynasty` : v.from}.`];
+          if (v.note) parts.push(v.note + '.');
+          state = el('div', { class: 'state' }, el('span', { class: 'muted' }, parts.join(' ')));
+          if (v.pending != null) state.append(' ', el('span', { class: 'pending' }, `Waiting to land: ${r.options[v.pending]}.`), ' ', el('button', { class: 'link', onclick: async () => { values = MsCore.cancel(values, r); await save(); render(); } }, 'Cancel'));
+        }
+        card.append(el('div', { class: 'row' }, el('div', { class: 'label' }, r.label, el('span', { class: 'chip' }, r.store === 'global' ? 'whole game' : 'dynasty')), seg, r.help ? el('div', { class: 'help' }, r.help) : null, state));
+      }
+      host.append(card);
+    }
+  }
+  $('open').addEventListener('click', async () => {
+    try { dir = await window.showDirectoryPicker({ id: 'modsettings', mode: 'readwrite' }); } catch (e) { return; }
+    await load(); clearInterval(timer); timer = setInterval(async () => { await loadStatus(); render(); }, 2000);
+  });
+  $('reload').addEventListener('click', () => load());
+})();
+</script>
+</body>
+</html>

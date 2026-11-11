@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "preseason-weeks",
+  "title": "Preseason Weeks",
+  "scope": "dynasty",
+  "rows": [
+    {
+      "id": "spring",
+      "label": "Spring Game",
+      "options": ["Off", "Game Only", "Game + Practice", "All Teams Practice"],
+      "default": 2,
+      "help": "Off: no extra week. Game Only: one extra preseason week with a spring game, your starters against your second string. Game + Practice: also four weeks of practice XP for your players before the game. All Teams Practice: CPU teams get the practice XP too. Applies at the next Advance.",
+      "inert": "From Preseason Wk 1",
+      "store": { "request": { "responses": 4 } }
+    }
+  ]
+}

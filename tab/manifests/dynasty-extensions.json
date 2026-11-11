@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "dynasty-extensions",
+  "title": "Dynasty Extensions",
+  "scope": "dynasty",
+  "rows": [
+    {
+      "id": "ws",
+      "label": "Weekly Strategy",
+      "options": ["Off", "On"],
+      "default": 1,
+      "help": "On: press View on the dynasty hub for the Weekly Strategy screen, with focus players, the weekly coach goal and the gameplan focus (they give XP at each Advance). Off: no View button and no Weekly Strategy XP.",
+      "inert": "After your next Advance",
+      "store": { "request": { "typeName": "Depth Chart", "responses": 2, "invert": true } }
+    },
+    {
+      "id": "pb",
+      "label": "Press Box",
+      "options": ["Off", "On"],
+      "default": 1,
+      "help": "On: in Scores / Schedules, press A on any game this week to Take this game and play or watch it. Off: the game's own menu there, and no games are taken for you. A game you already took stays this week.",
+      "inert": "After your next Advance",
+      "store": { "request": { "typeName": "Players of the Week", "responses": 2, "invert": true } }
+    }
+  ]
+}

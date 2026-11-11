@@ -1,0 +1,34 @@
+{
+  "schema": 2,
+  "id": "modsettings-demo",
+  "title": "Mod Settings Demo (Test)",
+  "rows": [
+    {
+      "id": "alpha",
+      "label": "Demo Switch A",
+      "options": ["Off", "On"],
+      "default": 1,
+      "help": "Test row. Does nothing in the game; its value is stored in the shared settings band (record 0, bit 4).",
+      "store": "band",
+      "band": { "record": 0, "bit": 4, "width": 1 }
+    },
+    {
+      "id": "beta",
+      "label": "Demo Level",
+      "options": ["Low", "Medium", "High"],
+      "default": 1,
+      "help": "Test row with three options. Does nothing in the game; stored in the shared settings band (record 0, bits 5-6).",
+      "store": "band",
+      "band": { "record": 0, "bit": 5, "width": 2 }
+    },
+    {
+      "id": "gamma",
+      "label": "Demo Switch B",
+      "options": ["Off", "On"],
+      "default": 0,
+      "help": "Test row. Does nothing in the game; stored in the shared settings band (record 0, bit 7).",
+      "store": "band",
+      "band": { "record": 0, "bit": 7, "width": 1 }
+    }
+  ]
+}
