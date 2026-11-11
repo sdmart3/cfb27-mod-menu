@@ -5,7 +5,11 @@
 // (its md5 must equal modsettings/build/build-record-tab.json). Never writes a Mod Manager, game or saves folder; never publishes.
 'use strict';
 const fs = require('fs'), path = require('path'), cp = require('child_process'), crypto = require('crypto');
-const REPO = path.join(__dirname, '..'), ROOT = path.join(REPO, '..'), OUT = path.join(ROOT, 'exports', 'build-mods', 'modmenu-tab-test');
+const REPO = path.join(__dirname, '..'), ROOT = path.join(REPO, '..');
+// --out <folder name under exports/build-mods> (default modmenu-tab-test); a folder a lab test is about to use is never rebuilt by hand: pick a new name
+const OUTNAME = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'modmenu-tab-test';
+if (!/^modmenu-tab-test[-a-z0-9]*$/.test(OUTNAME)) { console.log('package-tab: --out must be modmenu-tab-test or modmenu-tab-test-<suffix>'); process.exit(2); }
+const OUT = path.join(ROOT, 'exports', 'build-mods', OUTNAME);
 const run = (cmd, args, cwd) => { const r = cp.spawnSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 }); return { code: r.status, out: (r.stdout || '') + (r.stderr || '') }; };
 const die = (m) => { console.log('package-tab: ' + m + ': nothing packaged'); process.exit(1); };
 const h = (alg, b) => crypto.createHash(alg).update(b).digest('hex');
@@ -25,6 +29,7 @@ const cp1 = (from, to) => { fs.mkdirSync(path.dirname(path.join(OUT, to)), { rec
 cp1(path.join(plug, 'ModSettingsPlugin.dll'), 'Plugins/ModSettingsPlugin.dll');
 cp1(path.join(plug, 'ModSettings', 'plugin.cfg'), 'Plugins/ModSettings/plugin.cfg');
 cp1(path.join(REPO, 'dll', 'out', 'modsettings.dll'), 'Plugins/ModSettings/modsettings.dll');
+console.log('package-tab: -> ' + OUT);
 cp1(path.join(REPO, 'dll', 'modsettings.ini'), 'Plugins/ModSettings/modsettings.ini');
 cp1(path.join(ROOT, 'modsettings', 'slots.json'), 'Plugins/ModSettings/slots.json');
 const SM = path.join(REPO, 'samples'); const samples = fs.readdirSync(SM).filter((f) => f.endsWith('.json'));
@@ -33,10 +38,11 @@ const git = (d) => run('git', ['-C', d, 'log', '-1', '--format=%h %s'], d).out.t
 const branch = (d) => run('git', ['-C', d, 'rev-parse', '--abbrev-ref', 'HEAD'], d).out.trim();
 const files = []; (function walk(d) { for (const f of fs.readdirSync(d)) { const p = path.join(d, f); if (fs.statSync(p).isDirectory()) walk(p); else if (f !== 'BUILD-INFO.txt') files.push(p); } })(OUT);
 const nchecks = (blog.match(/(\d+) checks ok in all/) || [])[1], cchecks = (ct.out.match(/companion: (\d+) ok/) || [])[1];
-let txt = `Mod Menu TAB - TEST BUILD, not a release (${new Date().toISOString()}). Category Test. Never a live folder; never publish.
+let txt = `Mod Menu TAB (${OUTNAME}) - TEST BUILD, not a release (${new Date().toISOString()}). Category Test. Never a live folder; never publish.
 What it is: the in-game Settings > "Mod Settings" tab (the .fbmod: a GenericSettings copy whose tab asks the game's settings adapter for
 category ${rec.feedCategory}) + modsettings.dll 0.2.0-tab1 (wraps the settings adapter's slots 0x30 / 0x38 / 0x40 / 0x50 / 0x58 for that category
 only and answers them from the manifests in Plugins\\ModSettings\\mods: one header per mod, then its rows; a change -> settings.json).
+${OUTNAME === 'modmenu-tab-test' ? '' : 'Follow-up build (not the one lab modmenu-tab-1 tests): + spec v3 "Names, duplicates and clashes", "Adding rows to another mod\'s section", "Safety and behaviour rules".\n'}
 Docs: docs/design.md section 12 ("Layer 2 tab feed, 11-11"), docs/manifest-spec.md.
 Source: dll-plugin/ branch ${branch(REPO)} @ ${git(REPO)}; modsettings/ branch ${branch(path.join(ROOT, 'modsettings'))} @ ${git(path.join(ROOT, 'modsettings'))}.
 Tests (offline): dll/build.js ${nchecks} self-test checks (incl. 'tab': 55 checks against fake holders / Variants; both dumps: the settings

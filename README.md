@@ -42,6 +42,8 @@ node tools/validate.js my-mod.json
 
 Errors say what is wrong and how to fix it. See `docs/manifest-spec.md` for every row type and binding.
 
+Good to know before you publish: your `modid` should be unique (a second mod with the same id is kept but its settings are stored as `modid@file`), a duplicate row `key` in one manifest means the first wins, and a manifest can add rows to another mod's section by naming that section. The new spec sections "Names/duplicates", "Adding rows to another mod's section" and "Safety and behaviour rules" cover it.
+
 ## Building
 
 No binaries are committed. This repo carries no EA game files either.

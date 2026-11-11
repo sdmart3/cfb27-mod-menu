@@ -64,7 +64,7 @@ static struct { int safe; int verify; } g_ps = { 1, 1 };
 static struct { int enabled, band_write, ini_bind, log_captures, poll_ms, cap[4]; } g_k = { 1, 1, 1, 20, 1000, { 1, 1, 1, 1 } };
 static int g_ini_found;
 /* the layer 2 tab feed (mstab.h): tab = 0 leaves the settings adapter alone; slider_native = 1 draws every slider as the game's slider row */
-static struct { int on, slider_native, log_calls; } g_kt = { 1, 0, 20 };
+static struct { int on, slider_native, log_calls, show_inactive; } g_kt = { 1, 0, 20, 0 };
 static char g_state[24] = "loading", g_reason[300];
 
 static void logf_(const char *fmt, ...) {
@@ -192,6 +192,11 @@ static int patch_call(unsigned char *site, void *dst_fn, void **tramp_out) {
 
 /* ------------------------------------------------------------------ pins (one MsBuild per known game build) */
 #include "ms_pins.h"
+/* the running game's Mod Manager game version, by PE timestamp (TU 10-29 = 4338538: the version every queue entry and .fbmod build since
+ * 10-29 was stamped with; TU 10-13: not recorded). 0 = unknown: gameVersion pins are not checked */
+static const struct { uint32_t stamp, gamever; } MS_GAMEVER[] = { { 1792187070u, 4338538u } };
+static uint32_t gamever_of(uint32_t stamp) { for (size_t i = 0; i < sizeof MS_GAMEVER / sizeof *MS_GAMEVER; i++) if (MS_GAMEVER[i].stamp == stamp) return MS_GAMEVER[i].gamever; return 0; }
+static volatile uint32_t g_run_gamever; static volatile LONG g_cfg_force;
 static unsigned char *g_base; static uint64_t g_hdr_base;
 #define AT(rva) ((void *)(g_base + (rva)))
 static const MsBuild *g_pb = &MS_BUILDS[0];
@@ -213,6 +218,7 @@ static int ms_pins_check(char *why, size_t n) {
     snprintf(why, n, "this game build (PE timestamp %u) is not one this version was made for: %s", stamp, known); return 0;
   }
   g_pb = pb;
+  { uint32_t gv = gamever_of(stamp); if (gv && gv != g_run_gamever) { g_run_gamever = gv; InterlockedExchange(&g_cfg_force, 1); } }   /* gameVersion pins re-checked */
   if (!pref) { snprintf(why, n, "the game is not at its preferred base"); return 0; }
   for (int i = 0; i < MS_NFUNCS; i++) {
     unsigned char *f = (unsigned char *)AT(pb->funcs[i].rva);
@@ -303,23 +309,29 @@ static int ms_guarded(void (*fn)(void *), void *arg, const char *what) { return 
 #define MS_MAXMODS 64
 #define MS_MAXROWS 512
 #define MS_ID 41
+#define MS_MID 108      /* a mod id as stored: <modid> or, for a second mod with a used modid, <modid>@<source file> (spec v3 "Names, duplicates and clashes") */
 #define MS_MAXOPT 8
 #define MS_MAXPEND 64   /* pending dynasty changes handled per pass */
 #define MS_MAXLIST 12   /* spec v3: a list row has 2-12 options */
 #define MS_MAXSTOPS 1001 /* spec v3: a slider has at most 1001 stops */
-#define MS_POOL (192 * 1024)
+#define MS_POOL (512 * 1024)
 enum { ST_BAND = 1, ST_GLOBAL = 2 };
 /* row types (spec v3; a v2 row is a toggle when its options are ["Off", "On"], else a list) and v3 bindings */
 enum { RT_HEADER = 1, RT_INFO, RT_TOGGLE, RT_LIST, RT_SLIDER };
 enum { BD_V2 = 0, BD_API, BD_TUNING, BD_DYNASTY };
+/* visibleIf / enabledIf (spec v3 "Safety and behaviour rules" 9): { "key", optional "mod", "eq" | "ne" | "in": [...] } */
+typedef struct { int on, op, n, row; char mod[MS_MID], key[MS_ID]; int kind[8], b[8], s[8]; double num[8]; } MsCond;   /* op 0 eq, 1 ne, 2 in; kind 0 number, 1 bool, 2 text */
 typedef struct {
-  char mod[MS_ID], id[MS_ID]; int nopt, dflt, store, rec, bit, width;
+  char mod[MS_MID], id[MS_ID]; int nopt, dflt, store, rec, bit, width;
   int has_ini; char ini_file[MAX_PATH], ini_key[64], ini_val[MS_MAXOPT][48];
   /* the tab (layer 2) + spec v3. Strings are offsets into MsCfg.pool (-1 = none). A slider's nopt = its stops (option index = stop). */
   int schema, type, bind, s_label, s_desc, s_opt[MS_MAXLIST], s_unit, s_where;   /* s_where: tuning "asset:field" / dynasty slot name */
+  /* safety and behaviour rules: asis = option 0 is "As installed" (tuning rows; the real options follow); applies -1 (v2, not shown) / 0 now /
+   * 1 next-game / 2 restart; copy 1 simulation, 2 base, 3 both; unavail + s_unavail = never written, greyed, why; s_also = "also set by ..." */
+  int asis, applies, copy, unavail, s_unavail, s_asset, s_field, s_inst, s_also; MsCond cond[2];   /* cond[0] visibleIf, cond[1] enabledIf */
   double smin, smax, sstep;
 } MsRow;
-typedef struct { char id[MS_ID]; int first, nrows, schema, s_title, s_version; } MsMod;
+typedef struct { char id[MS_MID]; int first, nrows, schema, s_title, s_version, s_source, dup, s_section, closed, s_fbmod, active, s_about, npin; long long pin[8]; } MsMod;   /* dup: stored as <modid>@<source>; s_section: "section" (a modid or "@name") */   /* dup: stored as <modid>@<source> (its modid was taken) */
 typedef struct {
   int nmods, nrows; MsMod mods[MS_MAXMODS]; MsRow rows[MS_MAXROWS];
   int gval[MS_MAXROWS], gset[MS_MAXROWS];            /* global value (index) and whether values.json / settings.json named it (else the default) */
@@ -392,7 +404,7 @@ static void load_manifest(MsCfg *c, const char *path, const char *name) {
   for (int r = d.n[rows].first; r >= 0; r = d.n[r].next, k++) {
     MsRow *o = &c->rows[first + k]; memset(o, 0, sizeof *o);
     snprintf(o->mod, sizeof o->mod, "%s", id);
-    o->schema = 2; o->bind = BD_V2; o->s_label = o->s_desc = o->s_unit = o->s_where = -1; for (int x = 0; x < MS_MAXLIST; x++) o->s_opt[x] = -1;
+    o->schema = 2; o->bind = BD_V2; o->s_label = o->s_desc = o->s_unit = o->s_where = -1; o->applies = -1; o->s_unavail = o->s_asset = o->s_field = o->s_inst = o->s_also = -1; o->cond[0].row = o->cond[1].row = -1; for (int x = 0; x < MS_MAXLIST; x++) o->s_opt[x] = -1;
     if (d.n[r].type != J_OBJ) { cfg_problem(c, "%s: row %d is not an object", name, k); continue; }
     const char *rid = j_str(&d, j_get(&d, r, "id"));
     if (!id_ok(rid, 1)) { cfg_problem(c, "%s: row %d: id must be lower case letters, digits, '-'", name, k); continue; }
@@ -441,7 +453,7 @@ static void load_manifest(MsCfg *c, const char *path, const char *name) {
   }
   if (c->nproblems == before) {
     MsMod *m = &c->mods[c->nmods++]; snprintf(m->id, sizeof m->id, "%s", id); m->first = first; m->nrows = k; c->nrows += k;
-    m->schema = 2; m->s_title = pool_put(c, title); m->s_version = -1;
+    m->schema = 2; m->s_title = pool_put(c, title); m->s_version = -1; m->s_source = pool_put(c, name); m->dup = 0; m->s_section = -1; m->closed = 0; m->s_fbmod = -1; m->active = 1; m->s_about = -1; m->npin = 0;
     snprintf(c->loaded + strlen(c->loaded), sizeof c->loaded - strlen(c->loaded), "%s%s", c->loaded[0] ? "," : "", id);
   } else c->pool_used = pool0;
 done:
@@ -488,7 +500,9 @@ static MsCfg *cfg_build(void) {
   WIN32_FIND_DATAA fd; HANDLE h = FindFirstFileA(pat, &fd);
   if (h != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && nn < MS_MAXMODS * 2) snprintf(names[nn++], MAX_PATH, "%s", fd.cFileName); } while (FindNextFileA(h, &fd)); FindClose(h); }
   qsort(names, (size_t)nn, sizeof names[0], cmp_names);   /* a fixed order: earlier manifests win a band bit clash */
-  for (int i = 0; i < nn; i++) { char p[MAX_PATH * 2]; snprintf(p, sizeof p, "%s\\" MS_MODSDIR "\\%s", g_dir, names[i]); load_manifest(c, p, names[i]); }
+  int plan[MS_MAXMODS * 2]; cfg_plan(names, nn, plan);   /* same mod twice: only its highest version (msv3.h) */
+  for (int i = 0; i < nn; i++) { if (plan[i] < 0) continue; char p[MAX_PATH * 2]; snprintf(p, sizeof p, "%s\\" MS_MODSDIR "\\%s", g_dir, names[plan[i]]); load_manifest(c, p, names[plan[i]]); }
+  cfg_resolve(c);   /* pack activity, gameVersion pins, two mods on one field, visibleIf / enabledIf targets (msv3.h) */
   char vp[MAX_PATH]; snprintf(vp, sizeof vp, "%s\\" MS_VALUES, g_dir); load_values(c, vp);
   load_settings(c);   /* settings.json (the in-game tab's choices) after values.json: a global row it names wins; a dynasty change by seq */
   return c;
@@ -507,12 +521,12 @@ static unsigned long long inputs_stamp(void) {
 }
 
 /* ------------------------------------------------------------------ applied.json: the dynasty changes already written (by seq) */
-typedef struct { char key[2 * MS_ID + 2]; long long seq; } MsApplied;
+typedef struct { char key[MS_MID + MS_ID + 2]; long long seq; } MsApplied;
 static MsApplied g_applied[MS_MAXROWS * 2]; static int g_napplied; static volatile LONG g_applied_dirty;
 static CRITICAL_SECTION g_applied_cs;
-static long long applied_seq(const char *mod, const char *row) { char k[2 * MS_ID + 2]; snprintf(k, sizeof k, "%s/%s", mod, row); for (int i = 0; i < g_napplied; i++) if (!strcmp(g_applied[i].key, k)) return g_applied[i].seq; return 0; }
+static long long applied_seq(const char *mod, const char *row) { char k[MS_MID + MS_ID + 2]; snprintf(k, sizeof k, "%s/%s", mod, row); for (int i = 0; i < g_napplied; i++) if (!strcmp(g_applied[i].key, k)) return g_applied[i].seq; return 0; }
 static void applied_set(const char *mod, const char *row, long long seq) {
-  char k[2 * MS_ID + 2]; snprintf(k, sizeof k, "%s/%s", mod, row);
+  char k[MS_MID + MS_ID + 2]; snprintf(k, sizeof k, "%s/%s", mod, row);
   for (int i = 0; i < g_napplied; i++) if (!strcmp(g_applied[i].key, k)) { if (g_applied[i].seq != seq) { g_applied[i].seq = seq; InterlockedExchange(&g_applied_dirty, 1); } return; }
   if (g_napplied < MS_MAXROWS * 2) { snprintf(g_applied[g_napplied].key, sizeof g_applied[g_napplied].key, "%s", k); g_applied[g_napplied++].seq = seq; InterlockedExchange(&g_applied_dirty, 1); }
 }
@@ -626,7 +640,7 @@ static char g_last_write[200];
 typedef struct { void *flow, *a2; int site; } PassArgs;
 static int band_lo(int rec) { return MS_BAND_BASE + MS_BAND_RECSIZE * rec; }
 /* the bits after applying every pending change of record rec; marks[] = which rows it changed (for applied.json) */
-typedef struct { int rec, bit, width, want; long long seq; char mod[MS_ID], id[MS_ID]; } PendRow;
+typedef struct { int rec, bit, width, want; long long seq; char mod[MS_MID], id[MS_ID]; } PendRow;
 static int band_apply_bits(int bits, const PendRow *p, int np, int rec) {
   for (int i = 0; i < np; i++) if (p[i].rec == rec) { int mask = ((1 << p[i].width) - 1) << p[i].bit; bits = (bits & ~mask) | ((p[i].want << p[i].bit) & mask); }
   return bits;
@@ -775,7 +789,7 @@ static void ini_load(const char *path) {
   struct { const char *key; int *v; } KEYS[] = { { "enabled", &g_k.enabled }, { "band_write", &g_k.band_write }, { "ini_bind", &g_k.ini_bind }, { "log_captures", &g_k.log_captures },
     { "poll_ms", &g_k.poll_ms }, { "capture_meters", &g_k.cap[0] }, { "capture_myschool", &g_k.cap[1] }, { "capture_roster", &g_k.cap[2] }, { "capture_schedule", &g_k.cap[3] },
     { "log_sync", &g_log_sync }, { "patch_safe", &g_ps.safe }, { "patch_verify", &g_ps.verify },
-    { "tab", &g_kt.on }, { "slider_native", &g_kt.slider_native }, { "log_tab", &g_kt.log_calls } };
+    { "tab", &g_kt.on }, { "slider_native", &g_kt.slider_native }, { "log_tab", &g_kt.log_calls }, { "show_inactive", &g_kt.show_inactive } };
   FILE *f = fopen(path, "r"); if (!f) return; g_ini_found = 1; char line[512];
   while (fgets(line, sizeof line, f)) {
     char *c = strpbrk(line, ";#"); if (c) *c = 0;
@@ -847,6 +861,7 @@ static void status_write(void) {
 /* reload the configuration when its files changed (worker thread) */
 static unsigned long long g_inputs;
 static int cfg_poll(int force) {
+  if (InterlockedExchange(&g_cfg_force, 0)) force = 1;
   unsigned long long st = inputs_stamp(); if (!force && st == g_inputs) return 0;
   g_inputs = st; MsCfg *c = cfg_build(); if (!c) return 0;
   EnterCriticalSection(&g_jq_cs); journal_apply(c, g_jq, g_njq); LeaveCriticalSection(&g_jq_cs);   /* tab changes not written yet stay visible */

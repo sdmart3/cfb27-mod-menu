@@ -13,8 +13,8 @@ const ROW_TYPES = ['toggle', 'list', 'slider', 'header', 'info'];
 const BIND_TYPES = ['tuning', 'api', 'dynasty'];
 const COPIES = ['simulation', 'base', 'both'];
 const KNOWN = {
-  top: ['schema', 'modid', 'title', 'version', 'rows', 'author', 'url', 'section', 'closed'],
-  row: ['type', 'key', 'label', 'description', 'default', 'bind', 'options', 'min', 'max', 'step', 'unit'],
+  top: ['schema', 'modid', 'title', 'version', 'rows', 'author', 'url', 'section', 'closed', 'gameVersion', 'fbmod', 'about', 'credits', 'links'],
+  row: ['type', 'key', 'label', 'description', 'default', 'bind', 'options', 'min', 'max', 'step', 'unit', 'applies', 'visibleIf', 'enabledIf'],
   tuning: ['type', 'asset', 'field', 'instance', 'copy', 'values', 'scale'],
   api: ['type'],
   dynasty: ['type', 'slot', 'values'],
@@ -79,6 +79,12 @@ function validate(m) {
     else if (m.closed === true) W('closed', '"closed" is about YOUR section, but this manifest puts its rows in another section; other mods could not join anyway.');
   }
   if (m.closed !== undefined && typeof m.closed !== 'boolean') E('closed', 'is true (other mods may not add rows to your section) or false.');
+  // safety and behaviour rules (spec v3, 11-11)
+  if (m.gameVersion !== undefined) { const g = Array.isArray(m.gameVersion) ? m.gameVersion : [m.gameVersion]; if (!g.length || g.length > 8 || !g.every(Number.isInteger)) E('gameVersion', 'is the Mod Manager game version number your tuning rows were made for (e.g. 4338538), or a list of up to 8. On any other known version those rows show "not available on this game version".'); }
+  if (m.fbmod !== undefined && (typeof m.fbmod !== 'string' || !/\.fbmod$/i.test(m.fbmod) || m.fbmod.length > 200)) E('fbmod', 'is your .fbmod\'s file name, e.g. "My Mod.fbmod". With it, your section hides while the mod is off in the player\'s pack.');
+  if (m.about !== undefined && !isStr(m.about, 1, 2000)) E('about', 'needs 1-2000 characters (shown on your section\'s "About" row).');
+  if (m.credits !== undefined && !isStr(m.credits, 1, 400)) E('credits', 'needs 1-400 characters.');
+  if (m.links !== undefined) { if (!Array.isArray(m.links) || m.links.length > 8) E('links', 'is a list of up to 8 { "title": "...", "url": "https://..." }.'); else m.links.forEach((l, j) => { if (!l || !isStr(l.title, 1, 40) || typeof l.url !== 'string' || l.url.length > 200 || !/^https?:\/\//i.test(l.url)) E(`links[${j}]`, 'needs a "title" (1-40 characters) and an http(s) "url".'); }); }
   if (!isStr(m.title, 1, 40)) E('title', 'needs 1-40 characters. It is the section heading players see.');
   if (!isStr(m.version, 1, 20)) E('version', 'needs a version text such as "1.0.0" (1-20 characters).');
   if (!Array.isArray(m.rows) || m.rows.length < 1) { E('rows', 'needs a list with at least one row.'); return { errors, warnings }; }
@@ -103,6 +109,16 @@ function validate(m) {
     else if (keys.has(r.key)) E(w, `"key" "${r.key}" is used twice. Every row needs its own key.`);
     else keys.add(r.key);
     if (r.description === undefined) W(w, 'no "description". Players read it as the help line; one sentence helps a lot.');
+    if (r.applies !== undefined && !['now', 'next-game', 'restart'].includes(r.applies)) E(w, `"applies" is "now", "next-game" (the default) or "restart".${didYouMean(r.applies, ['now', 'next-game', 'restart'])}`);
+    for (const ck of ['visibleIf', 'enabledIf']) {
+      const c = r[ck]; if (c === undefined) continue;
+      const ops = c && typeof c === 'object' ? ['eq', 'ne', 'in'].filter((o) => c[o] !== undefined) : [];
+      if (!c || typeof c !== 'object' || Array.isArray(c) || typeof c.key !== 'string' || ops.length !== 1) { E(w, `"${ck}" is { "key": "<a row key>", "eq" | "ne" | "in": ... } (and optionally "mod": "<modid>" for a row of the section's owner or another mod in it).`); continue; }
+      const vals = ops[0] === 'in' ? c.in : [c[ops[0]]];
+      if (!Array.isArray(vals) || !vals.length || vals.length > 8 || !vals.every((v) => ['boolean', 'number', 'string'].includes(typeof v))) E(w, `"${ck}" compares with true / false, a number or a text ("in": a list of 1-8).`);
+      if (c.mod === undefined && !m.rows.some((o) => o && o.key === c.key && ['toggle', 'list', 'slider'].includes(o.type))) E(w, `"${ck}" names "${c.key}", which is not a toggle, list or slider row of this mod. Add "mod" to look at another mod in this section.`);
+      if (c.key === r.key && c.mod === undefined) E(w, `"${ck}" looks at this row itself.`);
+    }
 
     // choices and default
     let n = 0; // number of distinct values the row can hold
@@ -150,7 +166,8 @@ function validate(m) {
       } else if (r.type === 'toggle' || r.type === 'list') {
         const need = r.type === 'toggle' ? 2 : n;
         if (!Array.isArray(b.values) || (need && b.values.length !== need)) E(bw, `"values" needs exactly ${need} entries, one field value for each ${r.type === 'toggle' ? 'of Off then On' : 'option, in order'}.`);
-        else b.values.forEach((v, j) => { if (!['number', 'boolean', 'string'].includes(typeof v)) E(bw, `values[${j}] must be a number, true/false, or text.`); });
+        else { b.values.forEach((v, j) => { if (!['number', 'boolean', 'string'].includes(typeof v)) E(bw, `values[${j}] must be a number, true/false, or text.`); });
+          if (new Set(b.values.map((v) => typeof v)).size > 1) E(bw, '"values" mix types (numbers, true/false, text). A field holds one type: in the game this row would be greyed and never written.'); }
         if (b.scale !== undefined) W(bw, '"scale" is for sliders; a toggle or list uses "values".');
       }
     } else if (b.type === 'dynasty') {
@@ -174,6 +191,13 @@ function crossCheck(list) {
         out.push(`${drop.file}: the same mod as ${keep.file} (modid "${ix}"): the game uses only the highest version (${keep.m.version}) and ignores this copy (${drop.m.version}).`);
       } else out.push(`${y.file}: uses the modid "${ix}" of a different mod (${x.file}). Both are shown, but this one's settings are stored as "${ix}@<its file name>" and its header says "duplicate id". Pick your own modid ("yourname-modname").`);
     } else if (normTitle(x.m.title) && normTitle(x.m.title) === normTitle(y.m.title)) out.push(`${x.file} / ${y.file}: the same visible title "${x.m.title}" on two mods: each header shows its source file. A more distinct title reads better.`);
+  }));
+  const tun = []; for (const x of ok) for (const r of (Array.isArray(x.m.rows) ? x.m.rows : [])) if (r && r.bind && r.bind.type === 'tuning') tun.push({ x, r, b: r.bind });
+  const cm = { simulation: 1, base: 2, both: 3 };
+  tun.forEach((a, i) => tun.slice(i + 1).forEach((c) => {
+    if (a.x === c.x || normId(a.x.m.modid) === normId(c.x.m.modid)) return;
+    if (String(a.b.asset).toLowerCase() === String(c.b.asset).toLowerCase() && a.b.field === c.b.field && (a.b.instance || '') === (c.b.instance || '') && (cm[a.b.copy] & cm[c.b.copy]))
+      out.push(`${a.x.file} "${a.r.key}" and ${c.x.file} "${c.r.key}" both set ${a.b.asset} : ${a.b.field}: both rows will read "also set by ..." and the last change wins.`);
   }));
   for (const x of ok) {
     const sv = typeof x.m.section === 'string' ? x.m.section : null; if (!sv || sv[0] === '@') continue;
@@ -268,13 +292,33 @@ function selftest() {
   cw = crossCheck([{ file: 'owner.json', m: M('owner', 'Owner', '1', ['late-hits']) }, { file: 'addon.json', m: M('addon', 'Addon', '1', ['late-hits'], { section: 'owner' }) }]);
   t('section into an open owner, same key: no warning (stored under each modid)', cw.length === 0);
 
+  // safety and behaviour rules
+  const T2 = (extra = {}) => ({ schema: 3, modid: 'demo-mod', title: 'Demo', version: '1.0.0', rows: [{ type: 'toggle', key: 'a', label: 'A', description: 'x', default: true, bind: { type: 'api' } }, { type: 'list', key: 'l', label: 'L', description: 'd', options: ['X', 'Y'], default: 0, bind: { type: 'api' }, ...extra }] });
+  t('rule 3 applies ok', errs(T2({ applies: 'restart' })).length === 0);
+  t('rule 3 applies bad', errs(T2({ applies: 'soon' })).some(e => /"applies" is/.test(e)));
+  t('rule 9 visibleIf ok', errs(T2({ visibleIf: { key: 'a', eq: true } })).length === 0);
+  t('rule 9 enabledIf in ok', errs(T2({ enabledIf: { key: 'a', in: [true] } })).length === 0);
+  t('rule 9 missing op', errs(T2({ visibleIf: { key: 'a' } })).some(e => /"visibleIf" is \{/.test(e)));
+  t('rule 9 unknown key', errs(T2({ visibleIf: { key: 'zz', eq: 1 } })).some(e => /not a toggle, list or slider row/.test(e)));
+  t('rule 9 other mod key ok', errs(T2({ visibleIf: { mod: 'owner', key: 'zz', eq: 1 } })).length === 0);
+  t('rule 9 self reference', errs(T2({ visibleIf: { key: 'l', eq: 1 } })).some(e => /this row itself/.test(e)));
+  m = base(); m.rows[0].bind = { type: 'tuning', asset: 'a', field: 'f', copy: 'base', values: [0, false] }; t('rule 7 mixed value types', errs(m).some(e => /mix types/.test(e)));
+  m = base(); m.gameVersion = 4338538; t('rule 6 gameVersion ok', errs(m).length === 0); m.gameVersion = [1, 'x']; t('rule 6 gameVersion bad', errs(m).some(e => e.startsWith('gameVersion')));
+  m = base(); m.fbmod = 'My Mod.fbmod'; t('rule 8 fbmod ok', errs(m).length === 0); m.fbmod = 'mod.zip'; t('rule 8 fbmod bad', errs(m).some(e => e.startsWith('fbmod')));
+  m = base(); m.about = 'Text'; m.credits = 'Me'; m.links = [{ title: 'Site', url: 'https://x.org' }]; t('rule 19 about / credits / links ok', errs(m).length === 0);
+  m.links = [{ title: 'Site', url: 'ftp://x' }]; t('rule 19 bad link', errs(m).some(e => e.startsWith('links[0]')));
+  const TN = (modid, copy) => ({ schema: 3, modid, title: modid, version: '1', rows: [{ type: 'toggle', key: 'k', label: 'K', description: 'd', default: true, bind: { type: 'tuning', asset: 'Blocking/BT', field: 'Pocket', copy, values: [false, true] } }] });
+  cw = crossCheck([{ file: 'a.json', m: TN('mod-a', 'simulation') }, { file: 'b.json', m: TN('mod-b', 'both') }]);
+  t('rule 1 two mods on one field', cw.length === 1 && /both set Blocking\/BT : Pocket/.test(cw[0]));
+  t('rule 1 simulation vs base: no clash', crossCheck([{ file: 'a.json', m: TN('mod-a', 'simulation') }, { file: 'b.json', m: TN('mod-b', 'base') }]).length === 0);
+
   // the shipped samples
-  const dir = path.join(__dirname, '..', 'modsettings-dll', 'samples');
+  const dir = path.join(__dirname, '..', 'samples');
   if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
     const rr = checkText(fs.readFileSync(path.join(dir, f), 'utf8'), f);
     t('sample ' + f + ' valid', rr.errors.length === 0);
   }
-  console.log(`modsettings-validate selftest: ${pass} passed, ${fail} failed`);
+  console.log(`validate selftest: ${pass} passed, ${fail} failed`);
   return fail === 0;
 }
 

@@ -355,11 +355,11 @@ static int selftest_tab(const char *dir) {
   t_put(dir, "mods\\z-bad3.json", "{ \"schema\": 3, \"modid\": \"z-bad3\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"info\", \"label\": \"I\", \"bind\": { \"type\": \"api\" } } ] }");
   t_put(dir, "mods\\z-bad4.json", "{ \"schema\": 3, \"modid\": \"z-bad4\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"slider\", \"key\": \"s\", \"label\": \"S\", \"min\": 0, \"max\": 5000, \"step\": 1, \"default\": 1, \"bind\": { \"type\": \"api\" } } ] }");
   t_put(dir, "mods\\z-bad5.json", "{ \"schema\": 3, \"modid\": \"z-bad5\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"list\", \"key\": \"l\", \"label\": \"L\", \"options\": [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"], \"default\": 0, \"bind\": { \"type\": \"dynasty\", \"slot\": \"z-bad5-l\" } } ] }");
-  t_put(dir, "mods\\z-bad6.json", "{ \"schema\": 3, \"modid\": \"z-other-name\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"toggle\", \"key\": \"a\", \"label\": \"A\", \"default\": false, \"bind\": { \"type\": \"api\" } } ] }");
+  t_put(dir, "mods\\z-bad6.json", "{ \"schema\": 3, \"modid\": \"!?\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"toggle\", \"key\": \"a\", \"label\": \"A\", \"default\": false, \"bind\": { \"type\": \"api\" } } ] }");
   t_put(dir, "mods\\z-bad7.json", "{ \"schema\": 3, \"modid\": \"z-bad7\", \"title\": \"B\", \"version\": \"1\", \"rows\": [ { \"type\": \"toggle\", \"key\": \"a\", \"label\": \"A\", \"default\": 1, \"bind\": { \"type\": \"api\" } } ] }");
   cfg_poll(1);
   AcquireSRWLockShared(&g_cfg_lock); MsCfg *c = g_cfg; int nm = c->nmods, nr = c->nrows, np = c->nproblems; char loaded[256]; snprintf(loaded, sizeof loaded, "%s", c->loaded);
-  int pb[7]; const char *why[7] = { "\"copy\" is required", "\"type\" must be toggle", "a info row has no \"bind\"", "the most is 1001", "at most 8 values", "the file name must be <modid>.json", "a toggle's \"default\" is true or false" };
+  int pb[7]; const char *why[7] = { "\"copy\" is required", "\"type\" must be toggle", "a info row has no \"bind\"", "the most is 1001", "at most 8 values", "\"modid\" must be 2-40 characters", "a toggle's \"default\" is true or false" };
   for (int k = 0; k < 7; k++) pb[k] = t_has_problem(c, why[k]);
   ReleaseSRWLockShared(&g_cfg_lock);
   T_CHECK(nm == 4 && nr == 5 + 5 + 2 + 3 && !strcmp(loaded, "auto-kick,modsettings-demo,pocket-presence,tabtest-dyn"), "v3 + v2: 4 manifests load (%s), %d rows", loaded, nr);
@@ -372,7 +372,7 @@ static int selftest_tab(const char *dir) {
   T_CHECK(hA == 0 && hD == 6 && hP == 10 && hT == 16 && g_th[hA].type == 0 && g_th[hA].key == -1 && !g_th[hA].en, "list: mod headers sorted by title (Auto Kick 0, Mod Settings Demo 6, Pocket Presence 10, Tab Test Dynasty 16), type 0, key -1, greyed");
   T_CHECK(!strcmp(g_th[0].desc, "Auto Kick 0.3.0"), "list: a mod header's help = title + version (%s)", g_th[0].desc);
   T_CHECK(!strcmp(g_th[1].disp, "Kicking") && g_th[1].type == 0 && g_th[1].key == -1, "list: the manifest's own header row -> a header");
-  T_CHECK(!strcmp(g_th[2].disp, "Auto Kick") && g_th[2].type == 1 && g_th[2].en && g_th[2].key == t_tkey("auto-kick", "enabled") && !strcmp(g_th[2].desc, "The game aims and times field goals and punts for you."), "list: a toggle row: type 1, enabled, key 0x4D00 + index, the description");
+  T_CHECK(!strcmp(g_th[2].disp, "Auto Kick") && g_th[2].type == 1 && g_th[2].en && g_th[2].key == t_tkey("auto-kick", "enabled") && !strcmp(g_th[2].desc, "The game aims and times field goals and punts for you. Applies: from the next game."), "list: a toggle row: type 1, enabled, key 0x4D00 + index, the description");
   T_CHECK(g_th[4].type == 1 && !strcmp(g_th[4].disp, "Reaction Delay"), "list: an 11-stop slider is drawn as a toggle row of stops");
   T_CHECK(g_th[5].type == 1 && !g_th[5].en && !strcmp(g_th[5].disp, "Your DLL reads these with ModSettings_Get."), "list: an info row: greyed, its text as the label");
   int fine = t_row("Fine Slider"); T_CHECK(fine > 0 && g_th[fine].type == 2, "list: a 101-stop slider is the game's slider row (type 2)");
@@ -449,6 +449,177 @@ static int selftest_tab(const char *dir) {
   T_CHECK(g_tab_off == 1 && g_disabled == 0, "a fault in the list feed: caught; the tab feed is off, the band writer is not");
   T_CHECK(t_list(MS_TAB_CAT) == 0 && g_t_orig[TS_LIST] == o0 + 1, "after the fault: our category goes to the original slot (the tab shows its fallback row)");
   printf("tab: %d failure(s)\n", g_t_fails); return g_t_fails;
+}
+
+/* ---------------------------------------------------------------- names: spec v3 "Names, duplicates and clashes" + "Adding rows to another mod's section" */
+static void t_clear_mods(const char *dir) {
+  char pat[MAX_PATH]; snprintf(pat, sizeof pat, "%s\\mods\\*.json", dir); WIN32_FIND_DATAA fd; HANDLE h = FindFirstFileA(pat, &fd);
+  if (h != INVALID_HANDLE_VALUE) { do { char p[MAX_PATH * 2]; snprintf(p, sizeof p, "%s\\mods\\%s", dir, fd.cFileName); DeleteFileA(p); } while (FindNextFileA(h, &fd)); FindClose(h); }
+  char p[MAX_PATH]; snprintf(p, sizeof p, "%s\\" MS_SETTINGS, dir); DeleteFileA(p);
+}
+static char *t_mf(char *b, size_t n, const char *modid, const char *title, const char *ver, const char *extra, const char *rows) {
+  snprintf(b, n, "{ \"schema\": 3, \"modid\": \"%s\", \"title\": \"%s\", \"version\": \"%s\"%s, \"rows\": [ %s ] }", modid, title, ver, extra, rows); return b;
+}
+#define T_TOG(k, l) "{ \"type\": \"toggle\", \"key\": \"" k "\", \"label\": \"" l "\", \"default\": true, \"bind\": { \"type\": \"api\" } }"
+static int t_seq(const char *const *want, int n) {   /* the list's display texts == want[] in order (from row 0) */
+  if (g_th_n != n) return 0; for (int k = 0; k < n; k++) if (strcmp(g_th[k].disp, want[k])) return 0; return 1;
+}
+static void t_dump_list(void) { for (int k = 0; k < g_th_n; k++) printf("    [%d] type %d key %d '%s'\n", k, g_th[k].type, g_th[k].key, g_th[k].disp); }
+static int t_count(const char *text, const char *needle) { int n = 0; for (const char *p = text; p && (p = strstr(p, needle)); p++) n++; return n; }
+static int selftest_names(const char *dir) {
+  t_init_common(dir); t_mkdirs(dir); g_t_fake = 1; ms_guard_init(); g_kt.log_calls = 0;
+  char lp[MAX_PATH]; snprintf(lp, sizeof lp, "%s\\names.log", dir); g_log = fopen(lp, "w"); g_log_sync = 1;
+  g_tab_orig[TS_LIST] = (void *)to_list; g_tab_orig[TS_TOGGLE] = (void *)to_tog; g_tab_orig[TS_SLIDER] = (void *)to_sld; g_tab_orig[TS_ADJT] = (void *)to_adjt; g_tab_orig[TS_ADJS] = (void *)to_adjs;
+  char b[2048]; t_clear_mods(dir);
+  /* ---- A. names, duplicates, clashes */
+  t_put(dir, "mods\\my-mod-two.json", t_mf(b, sizeof b, "My_Mod.Two", "Normalised", "1", "", T_TOG("n", "N")));
+  t_put(dir, "mods\\pen-a.json", t_mf(b, sizeof b, "realism-pen", "Penalties", "1", "", T_TOG("p", "P")));
+  t_put(dir, "mods\\pen-b.json", t_mf(b, sizeof b, "other-pen", "PENAL TIES", "1", "", T_TOG("q", "Q")));
+  t_put(dir, "mods\\same-1.json", t_mf(b, sizeof b, "same-mod", "same mod", "1.2.0", "", T_TOG("x", "Old X")));
+  t_put(dir, "mods\\same-2.json", t_mf(b, sizeof b, "same-mod", "Same Mod", "1.10.0", "", T_TOG("x", "New X") ", " T_TOG("y", "New Y")));
+  t_put(dir, "mods\\clash-a.json", t_mf(b, sizeof b, "clash", "Alpha Clash", "1", "", T_TOG("a", "A")));
+  t_put(dir, "mods\\clash-b.json", t_mf(b, sizeof b, "clash", "Beta Clash", "1", "", T_TOG("b", "B")));
+  t_put(dir, "mods\\dupkey.json", t_mf(b, sizeof b, "dupkey", "Dup Key", "1", "", T_TOG("k", "First") ", " T_TOG("k", "Second") ", " T_TOG("m", "Third")));
+  cfg_poll(1); cfg_poll(1);   /* twice: the "older copy" line is logged once */
+  AcquireSRWLockShared(&g_cfg_lock); char loaded[512]; snprintf(loaded, sizeof loaded, "%s", g_cfg->loaded); int np = g_cfg->nproblems; ReleaseSRWLockShared(&g_cfg_lock);
+  T_CHECK(np == 0 && !strcmp(loaded, "clash,clash@clash-b.json,dupkey,my-mod-two,realism-pen,other-pen,same-mod"), "loaded: %s (%d problems)", loaded, np);
+  T_CHECK(strstr(loaded, "my-mod-two") != NULL, "modid normalised: \"My_Mod.Two\" -> my-mod-two");
+  T_CHECK(ms_get("same-mod", "y") == 1 && t_tkey("same-mod", "y") > 0, "same modid + same mod (title matches, shared key): one section, the highest version (1.10.0 over 1.2.0) wins");
+  char *lg = t_read(lp);
+  T_CHECK(lg && t_count(lg, "same-1.json: ignored: older copy of same-mod (version 1.2.0; same-2.json has version 1.10.0)") == 1, "the older copy is logged once (\"ignored: older copy\"), across two reloads");
+  T_CHECK(lg && strstr(lg, "clash-b.json: modid clash is already used by another mod: both are shown; this one's settings are stored as clash@clash-b.json"), "same modid + different mods: both kept, the second stored as clash@clash-b.json (logged)");
+  T_CHECK(lg && strstr(lg, "the key \"k\" appears twice in this mod: the first row wins"), "a duplicate key inside one mod: logged");
+  free(lg);
+  int n = t_list(MS_TAB_CAT);
+  { const char *want[] = { "Alpha Clash", "A", "Beta Clash (duplicate id)", "B", "Dup Key", "First", "Third", "Normalised", "N", "PENAL TIES (pen-b.json)", "Q", "Penalties (pen-a.json)", "P", "Same Mod", "New X", "New Y" };
+    int ok = t_seq(want, (int)(sizeof want / sizeof *want)); if (!ok) t_dump_list();
+    T_CHECK(ok, "list (%d rows): sections sorted by visible title; matching titles get their source file; the second 'clash' says duplicate id; the duplicate key's first row (First) wins, Second not shown; the newer Same Mod copy's rows", n); }
+  { int k2 = t_row("Beta Clash (duplicate id)"); T_CHECK(k2 >= 0 && strstr(g_th[k2].desc, "clash@clash-b.json") != NULL, "the duplicate-id header's help names where its settings are kept"); }
+  t_adj(t_tkey("clash@clash-b.json", "b"), 0); journal_flush();
+  { char *sj = t_settings(dir); T_CHECK(sj && strstr(sj, "\"clash@clash-b.json\": { \"b\": false }") && !strstr(sj, "\"clash\": {"), "a change in the second 'clash' is stored under clash@clash-b.json; the first 'clash' is untouched"); free(sj); }
+  T_CHECK(ms_get("clash", "a") == 1 && ms_get("clash@clash-b.json", "b") == 0, "ms_get: clash/a 1 (untouched), clash@clash-b.json/b 0");
+  /* ---- B. adding rows to another mod's section */
+  t_clear_mods(dir);
+  t_put(dir, "mods\\owner-mod.json", t_mf(b, sizeof b, "owner-mod", "Realism Penalties", "1", "", T_TOG("own1", "Owner Row")));
+  t_put(dir, "mods\\addon-z.json", t_mf(b, sizeof b, "addon-z", "Zed Addon", "1", ", \"section\": \"owner-mod\"", T_TOG("late-hits", "Late Hits Z")));
+  t_put(dir, "mods\\addon-a.json", t_mf(b, sizeof b, "addon-a", "Able Addon", "1", ", \"section\": \"Owner_Mod\"", T_TOG("late-hits", "Late Hits A")));
+  t_put(dir, "mods\\closed-owner.json", t_mf(b, sizeof b, "closed-owner", "Kept Closed", "1", ", \"closed\": true", T_TOG("c1", "Closed Row")));
+  t_put(dir, "mods\\closed-addon.json", t_mf(b, sizeof b, "closed-addon", "Closed Addon", "1", ", \"section\": \"closed-owner\"", T_TOG("c2", "Refused Row")));
+  t_put(dir, "mods\\sh-1.json", t_mf(b, sizeof b, "sh-1", "Kicker Tweaks", "1", ", \"section\": \"@pass-rush\"", T_TOG("r1", "Rush One")));
+  t_put(dir, "mods\\sh-2.json", t_mf(b, sizeof b, "sh-2", "A Rush Mod", "1", ", \"section\": \"@Pass_Rush\"", T_TOG("r2", "Rush Two")));
+  t_put(dir, "mods\\orphan.json", t_mf(b, sizeof b, "orphan", "Orphan Mod", "1", ", \"section\": \"not-installed\"", T_TOG("o1", "Orphan Row")));
+  t_put(dir, "mods\\bad-section.json", t_mf(b, sizeof b, "bad-section", "Bad", "1", ", \"section\": 5", T_TOG("z", "Z")));
+  t_put(dir, "mods\\bad-closed.json", t_mf(b, sizeof b, "bad-closed", "Bad", "1", ", \"closed\": \"yes\"", T_TOG("z", "Z")));
+  cfg_poll(1);
+  AcquireSRWLockShared(&g_cfg_lock); np = g_cfg->nproblems; int p1 = t_has_problem(g_cfg, "\"section\" is another mod's modid"), p2 = t_has_problem(g_cfg, "\"closed\" is true or false"); ReleaseSRWLockShared(&g_cfg_lock);
+  T_CHECK(np == 2 && p1 && p2, "a \"section\" that is not text and a \"closed\" that is not true / false: refused (%d problems)", np);
+  n = t_list(MS_TAB_CAT);
+  { const char *want[] = { "Closed Addon", "Meant for the closed-owner section", "Refused Row", "Kept Closed", "Closed Row", "Orphan Mod", "Orphan Row", "Pass Rush", "added by A Rush Mod", "Rush Two", "added by Kicker Tweaks", "Rush One",
+                           "Realism Penalties", "Owner Row", "added by Able Addon", "Late Hits A", "added by Zed Addon", "Late Hits Z", "2 problem(s) in the mod manifests" };
+    int ok = t_seq(want, (int)(sizeof want / sizeof *want)); if (!ok) t_dump_list();
+    T_CHECK(ok, "list (%d rows): sections by visible title; contributors after the owner's rows behind 'added by <title>', by title; the shared @pass-rush section is 'Pass Rush' (two spellings, one section); a closed owner's contributor keeps its own section + a note; a missing target falls back to the contributor's own section", n); }
+  { int k = t_row("Meant for the closed-owner section"); T_CHECK(k >= 0 && g_th[k].type == 1 && !g_th[k].en && g_th[k].key == MS_TAB_KEY_INFO + 3 && strstr(g_th[k].desc, "does not take rows"), "the refusal note: a greyed info row (key 0x4CF3) saying why");
+    T_CHECK(t_det(MS_TAB_KEY_INFO + 3) == 1, "the note's options: one item"); }
+  { t_list(MS_TAB_CAT); int k = t_row("added by Able Addon"); T_CHECK(k >= 0 && g_th[k].type == 0 && g_th[k].key == -1 && strstr(g_th[k].desc, "addon-a"), "'added by' is a sub-header (type 0) whose help names the contributor's modid"); }
+  T_CHECK(t_tkey("addon-a", "late-hits") != t_tkey("addon-z", "late-hits") && t_tkey("addon-a", "late-hits") > 0, "two contributors with the same key: two rows, each under its own modid");
+  t_adj(t_tkey("addon-a", "late-hits"), 0); journal_flush();
+  { char *sj = t_settings(dir); T_CHECK(sj && strstr(sj, "\"addon-a\": { \"late-hits\": false }") && !strstr(sj, "\"addon-z\"") && !strstr(sj, "\"owner-mod\""), "a change of a contributed row is stored under the contributor (addon-a/late-hits), never the owner or the other contributor"); free(sj); }
+  T_CHECK(ms_get("addon-a", "late-hits") == 0 && ms_get("addon-z", "late-hits") == 1, "ms_get: addon-a/late-hits 0, addon-z/late-hits still 1");
+  /* the owner removed: its contributors fall back to their own sections, values kept */
+  { char p[MAX_PATH]; snprintf(p, sizeof p, "%s\\mods\\owner-mod.json", dir); DeleteFileA(p); } cfg_poll(1); n = t_list(MS_TAB_CAT);
+  T_CHECK(t_row("Able Addon") >= 0 && t_row("Zed Addon") >= 0 && t_row("added by Able Addon") < 0 && ms_get("addon-a", "late-hits") == 0, "the owner uninstalled: each contributor shows its own section (header = its title); addon-a's value is still 0");
+  if (g_log) fclose(g_log); g_log = stdout;
+  printf("names: %d failure(s)\n", g_t_fails); return g_t_fails;
+}
+
+/* ---------------------------------------------------------------- rules: spec v3 "Safety and behaviour rules" (1, 2, 3, 4, 6, 7, 8, 9, 19) */
+static int t_has_row(const char *disp) { return t_row(disp) >= 0; }
+static int selftest_rules(const char *dir) {
+  t_init_common(dir); t_mkdirs(dir); g_t_fake = 1; ms_guard_init(); g_kt.log_calls = 0;
+  char lp[MAX_PATH]; snprintf(lp, sizeof lp, "%s\\rules.log", dir); g_log = fopen(lp, "w"); g_log_sync = 1;
+  g_tab_orig[TS_LIST] = (void *)to_list; g_tab_orig[TS_TOGGLE] = (void *)to_tog; g_tab_orig[TS_SLIDER] = (void *)to_sld; g_tab_orig[TS_ADJT] = (void *)to_adjt; g_tab_orig[TS_ADJS] = (void *)to_adjs;
+  t_clear_mods(dir);
+  snprintf(g_mm_config, sizeof g_mm_config, "%s\\manager_config.json", dir);
+  t_put(dir, "manager_config.json", "{ \"Games\": { \"Madden27\": {}, \"CollegeFB27\": { \"Options\": { \"SelectedPack\": \"Runner\" }, \"Packs\": { \"Default\": \"Off Mod.fbmod:True\", \"Runner\": \"zzRunner - Active Mod.fbmod:True|Off Mod.fbmod:False\" } } } }");
+#define TUN(a, f, cp) "\"bind\": { \"type\": \"tuning\", \"asset\": \"" a "\", \"field\": \"" f "\", \"copy\": \"" cp "\""
+  t_put(dir, "mods\\rule-a.json", "{ \"schema\": 3, \"modid\": \"rule-a\", \"title\": \"Rule A\", \"version\": \"1\", \"fbmod\": \"Active Mod.fbmod\",\n"
+    " \"about\": \"What Rule A does.\", \"credits\": \"Made by the test.\", \"links\": [ { \"title\": \"Site\", \"url\": \"https://example.org/rule-a\" } ], \"rows\": [\n"
+    " { \"type\": \"list\", \"key\": \"depth\", \"label\": \"Depth\", \"options\": [\"Shallow\", \"Stock\", \"Deep\"], \"default\": 1, \"applies\": \"now\", " TUN("blocking/BT", "Pocket", "simulation") ", \"values\": [2.0, 3.0, 4.5] } },\n"
+    " { \"type\": \"toggle\", \"key\": \"jump\", \"label\": \"Jump\", \"default\": true, " TUN("catching/C", "Jump", "base") ", \"values\": [false, true] } },\n"
+    " { \"type\": \"list\", \"key\": \"mixed\", \"label\": \"Mixed\", \"options\": [\"A\", \"B\"], \"default\": 0, " TUN("x/Y", "Z", "both") ", \"values\": [1, \"x\"] } },\n"
+    " { \"type\": \"toggle\", \"key\": \"master\", \"label\": \"Master\", \"default\": true, \"bind\": { \"type\": \"api\" } },\n"
+    " { \"type\": \"list\", \"key\": \"style\", \"label\": \"Style\", \"options\": [\"Safe\", \"Balanced\", \"Aggressive\"], \"default\": 1, \"bind\": { \"type\": \"api\" }, \"visibleIf\": { \"key\": \"master\", \"eq\": true } },\n"
+    " { \"type\": \"toggle\", \"key\": \"extra\", \"label\": \"Extra\", \"default\": false, \"bind\": { \"type\": \"api\" }, \"enabledIf\": { \"key\": \"style\", \"in\": [\"Aggressive\", 0] } },\n"
+    " { \"type\": \"slider\", \"key\": \"restart-me\", \"label\": \"Restart Me\", \"min\": 0, \"max\": 10, \"step\": 1, \"default\": 5, \"applies\": \"restart\", \"bind\": { \"type\": \"api\" } } ] }");
+  t_put(dir, "mods\\rule-b.json", "{ \"schema\": 3, \"modid\": \"rule-b\", \"title\": \"Rule B\", \"version\": \"1\", \"rows\": [\n"
+    " { \"type\": \"list\", \"key\": \"depth-b\", \"label\": \"Depth B\", \"options\": [\"X\", \"Y\"], \"default\": 0, " TUN("Blocking/BT", "Pocket", "both") ", \"values\": [1, 2] } },\n"
+    " { \"type\": \"toggle\", \"key\": \"stray\", \"label\": \"Stray\", \"default\": true, \"bind\": { \"type\": \"api\" }, \"visibleIf\": { \"mod\": \"rule-a\", \"key\": \"master\", \"eq\": false } } ] }");
+  t_put(dir, "mods\\rule-off.json", "{ \"schema\": 3, \"modid\": \"rule-off\", \"title\": \"Off Mod\", \"version\": \"1\", \"fbmod\": \"Off Mod.fbmod\", \"rows\": [ " T_TOG("o", "Off Row") " ] }");
+  t_put(dir, "mods\\rule-ghost.json", "{ \"schema\": 3, \"modid\": \"rule-ghost\", \"title\": \"Ghost\", \"version\": \"1\", \"fbmod\": \"Ghost.fbmod\", \"rows\": [ " T_TOG("g", "Ghost Row") " ] }");
+  t_put(dir, "mods\\rule-pin.json", "{ \"schema\": 3, \"modid\": \"rule-pin\", \"title\": \"Pinned\", \"version\": \"1\", \"gameVersion\": 1234, \"rows\": [ { \"type\": \"toggle\", \"key\": \"p\", \"label\": \"Pinned Row\", \"default\": true, " TUN("p/Q", "R", "both") ", \"values\": [0, 1] } } ] }");
+  const char *bad[][2] = { { "z-applies", "\"applies\": \"soon\"" }, { "z-vis", "\"visibleIf\": { \"key\": \"a\" }" }, { "z-gv", "" }, { "z-link", "" }, { "z-fb", "" } };
+  char b[2048];
+  for (int k = 0; k < 5; k++) {
+    char row[400]; snprintf(row, sizeof row, "{ \"type\": \"toggle\", \"key\": \"a\", \"label\": \"A\", \"default\": true, \"bind\": { \"type\": \"api\" }%s%s }", bad[k][1][0] ? ", " : "", bad[k][1]);
+    const char *top = k == 2 ? ", \"gameVersion\": \"x\"" : k == 3 ? ", \"links\": [ { \"title\": \"T\", \"url\": \"ftp://x\" } ]" : k == 4 ? ", \"fbmod\": \"mod.zip\"" : "";
+    char nm[64]; snprintf(nm, sizeof nm, "mods\\%s.json", bad[k][0]); t_put(dir, nm, t_mf(b, sizeof b, bad[k][0], "Bad", "1", top, row));
+  }
+  g_run_gamever = 4338538; cfg_poll(1); cfg_poll(1);
+  AcquireSRWLockShared(&g_cfg_lock); int np = g_cfg->nproblems; int pr[5] = { t_has_problem(g_cfg, "\"applies\" is"), t_has_problem(g_cfg, "\"visibleIf\" is"), t_has_problem(g_cfg, "\"gameVersion\" is"), t_has_problem(g_cfg, "links[0] needs"), t_has_problem(g_cfg, "\"fbmod\" is your") }; ReleaseSRWLockShared(&g_cfg_lock);
+  T_CHECK(np == 5 && pr[0] && pr[1] && pr[2] && pr[3] && pr[4], "refused: applies not now / next-game / restart, a malformed visibleIf, a gameVersion that is not a number, a non-http link, an fbmod that is not .fbmod (%d problems)", np);
+  char *lg = t_read(lp);
+  /* 1. two mods on one field */
+  int n = t_list(MS_TAB_CAT);
+  T_CHECK(t_has_row("Depth - also set by Rule B") && t_has_row("Depth B - also set by Rule A"), "rule 1: both rows on blocking/BT : Pocket read 'also set by <the other mod>' (asset case ignored; copies simulation + both overlap)");
+  T_CHECK(t_has_row("Jump") && lg && t_count(lg, "both set blocking/BT : Pocket: the last change wins") == 1, "rule 1: logged once across two reloads; a row on another field is not marked");
+  /* 2. As installed */
+  int kD = t_tkey("rule-a", "depth"), kJ = t_tkey("rule-a", "jump");
+  n = t_det(kD); T_CHECK(n == 4 && !strcmp(g_th[0].disp, "As installed") && !strcmp(g_th[3].disp, "Deep") && t_shown() == 0, "rule 2: a tuning list gets 'As installed' first, and it is the default (the manifest's default is not)");
+  n = t_det(kJ); T_CHECK(n == 3 && !strcmp(g_th[0].disp, "As installed") && !strcmp(g_th[1].disp, "Off") && !strcmp(g_th[2].disp, "On") && t_shown() == 0, "rule 2: a tuning toggle: As installed / Off / On");
+  t_adj(kD, 3); t_adj(kJ, 1); journal_flush();
+  { char *sj = t_settings(dir); T_CHECK(sj && strstr(sj, "\"rule-a\": { \"depth\": 2, \"jump\": false }"), "rule 2: picked Deep and Off: settings.json depth 2 (its list position), jump false"); free(sj); }
+  t_adj(kD, 0); journal_flush(); cfg_poll(1);
+  { char *sj = t_settings(dir); T_CHECK(sj && strstr(sj, "\"depth\": \"as-installed\"") && ms_get("rule-a", "depth") == 0, "rule 2: back to As installed: stored as \"as-installed\", read back as option 0"); free(sj); }
+  /* 3 + 4. applies and game style */
+  n = t_list(MS_TAB_CAT);
+  { int r1 = t_row("Depth - also set by Rule B"), r2 = t_row("Restart Me"), r3 = t_row("Master"), r4 = t_row("Jump");
+    T_CHECK(r1 >= 0 && strstr(g_th[r1].desc, "Applies: right away.") && r2 >= 0 && strstr(g_th[r2].desc, "Applies: after a restart of the game.") && r3 >= 0 && strstr(g_th[r3].desc, "Applies: from the next game."), "rule 3: the help line says when a change applies (now / restart / the default next-game)");
+    T_CHECK(strstr(g_th[r1].desc, "Simulation style only.") && r4 >= 0 && strstr(g_th[r4].desc, "Not used in Simulation style."), "rule 4: copy simulation -> 'Simulation style only'; copy base -> 'Not used in Simulation style'"); }
+  /* 6. gameVersion pin */
+  { int kP = t_tkey("rule-pin", "p"), r = t_row("Pinned Row"); LONG ch = g_tab_changes;
+    T_CHECK(r >= 0 && !g_th[r].en && strstr(g_th[r].desc, "not available on this game version"), "rule 6: pinned to 1234, running 4338538: the tuning row is greyed, 'not available on this game version'");
+    n = t_det(kP); T_CHECK(n == 1 && !strcmp(g_th[0].disp, "not available on this game version"), "rule 6: its options: one item saying so");
+    t_adj(kP, 1); T_CHECK(g_tab_changes == ch, "rule 6: a change is refused (never written)");
+    g_run_gamever = 0; cfg_poll(1); t_list(MS_TAB_CAT); r = t_row("Pinned Row"); T_CHECK(r >= 0 && g_th[r].en, "rule 6: an unknown running version: the pin is not checked (the row is live)");
+    t_put(dir, "mods\\rule-pin.json", "{ \"schema\": 3, \"modid\": \"rule-pin\", \"title\": \"Pinned\", \"version\": \"1\", \"gameVersion\": [1234, 4338538], \"rows\": [ { \"type\": \"toggle\", \"key\": \"p\", \"label\": \"Pinned Row\", \"default\": true, " TUN("p/Q", "R", "both") ", \"values\": [0, 1] } } ] }");
+    g_run_gamever = 4338538; cfg_poll(1); t_list(MS_TAB_CAT); r = t_row("Pinned Row"); T_CHECK(r >= 0 && g_th[r].en, "rule 6: a pin list that names the running version: live"); }
+  /* 7. values of different types */
+  { int r = t_row("Mixed"); LONG ch = g_tab_changes; T_CHECK(r >= 0 && !g_th[r].en && strstr(g_th[r].desc, "different types"), "rule 7: values of mixed types: greyed, says why");
+    n = t_det(t_tkey("rule-a", "mixed")); T_CHECK(n == 1 && strstr(g_th[0].disp, "different types"), "rule 7: its options: one item saying why"); t_adj(t_tkey("rule-a", "mixed"), 1); T_CHECK(g_tab_changes == ch, "rule 7: a change is refused"); }
+  /* 8. the mod turned off in the selected pack */
+  t_list(MS_TAB_CAT);
+  T_CHECK(t_has_row("Rule A") && !t_has_row("Off Mod") && !t_has_row("Off Row") && !t_has_row("Ghost"), "rule 8: on in the pack (a runner's 'zzRunner - ' copy counts): shown; off, or not in the pack at all: hidden");
+  g_kt.show_inactive = 1; t_list(MS_TAB_CAT);
+  { int r = t_row("Off Mod (mod not active)"), rr = t_row("Off Row"); LONG ch = g_tab_changes;
+    T_CHECK(r >= 0 && rr >= 0 && !g_th[rr].en && t_has_row("Ghost (mod not active)"), "rule 8: show_inactive = 1: greyed sections '(mod not active)'");
+    t_adj(t_tkey("rule-off", "o"), 0); T_CHECK(g_tab_changes == ch, "rule 8: a row of an inactive mod cannot be changed"); }
+  g_kt.show_inactive = 0;
+  /* 9. visibleIf / enabledIf */
+  int kM = t_tkey("rule-a", "master"), kS = t_tkey("rule-a", "style");
+  t_list(MS_TAB_CAT); T_CHECK(t_has_row("Style") && !g_th[t_row("Extra")].en, "rule 9: Master on -> Style visible; Style Balanced -> Extra disabled (enabledIf in [Aggressive, 0])");
+  t_adj(kS, 2); t_list(MS_TAB_CAT); T_CHECK(g_th[t_row("Extra")].en, "rule 9: Style Aggressive (by label) -> Extra enabled");
+  t_adj(kS, 0); t_list(MS_TAB_CAT); T_CHECK(g_th[t_row("Extra")].en, "rule 9: Style Safe (by position 0) -> Extra enabled");
+  t_adj(kM, 0); t_list(MS_TAB_CAT); { LONG ch = g_tab_changes; T_CHECK(!t_has_row("Style"), "rule 9: Master off -> Style hidden"); t_adj(kS, 1); T_CHECK(g_tab_changes == ch, "rule 9: a hidden row cannot be changed"); }
+  t_adj(kM, 1); t_list(MS_TAB_CAT); T_CHECK(t_has_row("Style"), "rule 9: Master on again -> Style back");
+  free(lg); lg = t_read(lp);
+  T_CHECK(t_has_row("Stray") && lg && strstr(lg, "rule-b/stray: visibleIf names rule-a/master, which is not a row of this mod or of a mod in its section: the condition is ignored"), "rule 9: a condition on an unrelated mod's row is ignored (logged), the row stays visible");
+  /* 19. help pages */
+  { int r = t_row("About Rule A"); T_CHECK(r >= 0 && r == t_row("Rule A") + 1 && !g_th[r].en && g_th[r].key == MS_TAB_KEY_ABOUT + 0, "rule 19: an 'About Rule A' row right under the header (greyed, key 0x4C00 + mod)");
+    T_CHECK(r >= 0 && strstr(g_th[r].desc, "What Rule A does.") && strstr(g_th[r].desc, "Credits: Made by the test.") && strstr(g_th[r].desc, "Links:\nSite: https://example.org/rule-a"), "rule 19: its help panel holds about, credits and links");
+    T_CHECK(t_det(MS_TAB_KEY_ABOUT + 0) == 1, "rule 19: its options: one item"); }
+  free(lg);
+  if (g_log) fclose(g_log); g_log = stdout; g_mm_config[0] = 0;
+  printf("rules: %d failure(s)\n", g_t_fails); return g_t_fails;
 }
 
 /* ---------------------------------------------------------------- dump: pins, the install, every broken pin */
@@ -571,6 +742,8 @@ int main(int argc, char **argv) {
   else if (!strcmp(m, "records") && argc > 2) f = selftest_records(argv[2]);
   else if (!strcmp(m, "guard") && argc > 2) f = selftest_guard(argv[2]);
   else if (!strcmp(m, "tab") && argc > 2) f = selftest_tab(argv[2]);
+  else if (!strcmp(m, "names") && argc > 2) f = selftest_names(argv[2]);
+  else if (!strcmp(m, "rules") && argc > 2) f = selftest_rules(argv[2]);
   else if (!strcmp(m, "dump") && argc > 2) f = selftest_dump(argv[2]);
   else if (!strcmp(m, "patchsafe")) { InitializeCriticalSection(&g_cs); f = selftest_patchsafe(argc, argv); }
   else { printf("usage: modsettings-test json | config <dir> | ini <dir> | records <dir> | guard <dir> | tab <dir> | dump <dump> | patchsafe [n]\n"); return 2; }

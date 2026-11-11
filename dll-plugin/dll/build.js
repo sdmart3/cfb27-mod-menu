@@ -68,7 +68,7 @@ try {
   if (!noTest) {
     say('--- self-tests');
     test('json', ['json'], 'st-json.log');
-    for (const m of ['config', 'ini', 'records', 'guard', 'tab']) { const d = path.join(OUT, 't-' + m); fs.rmSync(d, { recursive: true, force: true }); test(m, [m, d], `st-${m}.log`); }
+    for (const m of ['config', 'ini', 'records', 'guard', 'tab', 'names', 'rules']) { const d = path.join(OUT, 't-' + m); fs.rmSync(d, { recursive: true, force: true }); test(m, [m, d], `st-${m}.log`); }
     test('patchsafe', ['patchsafe', '300'], 'st-patchsafe.log');
     for (const [tag, name, dump] of DUMPS) { say(`--- the ${name} dump (pins, the full install, every broken pin)`); test('dump ' + tag, ['dump', dump], `dump-${tag}.log`); }
     say(`  ${nok} checks ok in all`);
