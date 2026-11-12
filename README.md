@@ -80,7 +80,7 @@ Custom Kicking On: the kicking rows are live and Kicker Pressure appears.
 
 Tested in game with a test build of the tab and the 0.1 plugin; not in the 0.1 download yet. Each mod gets its own tab, named from its JSON. These are the three samples, one tab each:
 
-**Auto Kick:** [`samples/dll-mod-sample.json`](samples/dll-mod-sample.json) (an `api` mod). The grey text row in this shot still has its old wording; the sample file has the corrected line.
+**Auto Kick:** [`samples/dll-mod-sample.json`](samples/dll-mod-sample.json) (an `api` mod).
 
 ![Auto Kick in its own tab](docs/images/pertab-auto-kick.png)
 
