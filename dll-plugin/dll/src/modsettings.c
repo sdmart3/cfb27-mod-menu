@@ -309,7 +309,7 @@ static int ms_guarded(void (*fn)(void *), void *arg, const char *what) { return 
 
 /* ------------------------------------------------------------------ the configuration: manifests + values.json */
 #define MS_MAXMODS 64
-#define MS_MAXROWS 512
+#define MS_MAXROWS 1024
 #define MS_ID 41
 #define MS_MID 108      /* a mod id as stored: <modid> or, for a second mod with a used modid, <modid>@<source file> (spec v3 "Names, duplicates and clashes") */
 #define MS_MAXOPT 8

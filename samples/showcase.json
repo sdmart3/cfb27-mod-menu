@@ -1,0 +1,45 @@
+{
+  "schema": 3,
+  "modid": "showcase",
+  "title": "Showcase",
+  "version": "1.0.0",
+  "about": "One row of every kind, for the how-to screenshot. Every choice is stored in settings.json (the api binding); nothing in the game is changed.",
+  "rows": [
+    { "type": "header", "label": "Game Flow" },
+    { "type": "info", "label": "Turn Custom Kicking on to unlock the kicking rows below it." },
+    {
+      "type": "toggle", "key": "custom-kicking", "label": "Custom Kicking",
+      "description": "On: the kicking rows below apply. Off: they are greyed and the game kicks as normal.",
+      "default": false, "bind": { "type": "api" }
+    },
+    {
+      "type": "list", "key": "kick-style", "label": "Kick Style",
+      "description": "How the kicker plays field goals and punts.",
+      "options": ["Safe", "Balanced", "Aggressive", "Squib"], "default": 1, "bind": { "type": "api" },
+      "enabledIf": { "key": "custom-kicking", "eq": true }
+    },
+    {
+      "type": "slider", "key": "kick-accuracy", "label": "Kick Accuracy Bonus",
+      "description": "Added to the kicker's accuracy, in percent.",
+      "min": 0, "max": 100, "step": 5, "default": 0, "unit": " %", "bind": { "type": "api" },
+      "enabledIf": { "key": "custom-kicking", "eq": true }
+    },
+    {
+      "type": "list", "key": "pressure", "label": "Kicker Pressure",
+      "description": "Shown only while Custom Kicking is on: how much a loud crowd rattles the kicker.",
+      "options": ["None", "Light", "Normal", "Heavy"], "default": 2, "bind": { "type": "api" },
+      "visibleIf": { "key": "custom-kicking", "eq": true }
+    },
+    { "type": "header", "label": "Pace" },
+    {
+      "type": "list", "key": "quarter-length", "label": "Quarter Length",
+      "description": "A longer list: eight choices.",
+      "options": ["1 min", "2 min", "3 min", "5 min", "7 min", "10 min", "12 min", "15 min"], "default": 3, "bind": { "type": "api" }
+    },
+    {
+      "type": "slider", "key": "game-speed", "label": "Game Speed",
+      "description": "A slider with a decimal step, from 0.5 x to 2.0 x.",
+      "min": 0.5, "max": 2.0, "step": 0.1, "default": 1.0, "unit": " x", "bind": { "type": "api" }
+    }
+  ]
+}

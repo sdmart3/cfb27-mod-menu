@@ -33,6 +33,20 @@ Write one file and save it as `Plugins\ModSettings\mods\<your-mod-id>.json`:
 
 Delivery as a block inside your .fbmod description is described below under "What is proven".
 
+## Where to store a setting
+
+Use the normal (global) storage by default: leave the `bind` as `api` or `tuning` and the choice is kept in `Plugins\ModSettings\settings.json`, one value per player, whatever dynasty is loaded. There is plenty of room.
+
+Use the `dynasty` binding only for a setting that must be different in each dynasty. The dynasty save has a small shared table that every mod shares: in a 64-team league it holds only about 18 options in total across ALL mods, so spend it on things that really need it.
+
+Limits, in plain words:
+- 64 mods (manifests) at most.
+- 1024 rows in total across all mods (headers and text rows count). One manifest holds up to 120 rows.
+- A list row has 2 to 12 options.
+- A slider has up to 1001 steps.
+
+Screenshot: the section `samples/showcase.json` produces in game (`showcase-off.png`: Custom Kicking Off, the two kicking rows greyed and Kicker Pressure hidden; `showcase-on.png`: Custom Kicking On).
+
 ## The three bindings
 
 A `bind` says what a row does. Pick one per row.

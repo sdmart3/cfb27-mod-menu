@@ -89,7 +89,7 @@ try {
     const sm = fs.existsSync(SM) ? fs.readdirSync(SM).filter((f) => f.endsWith('.json')) : [];
     for (const f of sm) { const j = JSON.parse(fs.readFileSync(path.join(SM, f), 'utf8')); fs.copyFileSync(path.join(SM, f), path.join(sd, 'mods', j.modid + '.json')); }
     r = run(path.join(OUT, 'modsettings-test.exe'), ['load', sd]);
-    const sOk = sm.length === 2 && r.code === 0 && /^LOADED auto-kick,pocket-presence\s*$/m.test(r.out) && !/^PROBLEM/m.test(r.out);
+    const sOk = sm.length >= 2 && r.code === 0 && /^LOADED .*auto-kick/m.test(r.out) && /^LOADED .*pocket-presence/m.test(r.out) && !/^PROBLEM/m.test(r.out);
     const sLines = r.out.split(/\r?\n/).filter((l) => /^(LOADED|PROBLEM)/.test(l)).join(' | ');
     say(sOk ? `  samples load ok (${sm.join(', ')}: auto-kick + pocket-presence, no problem)` : `  samples load FAILED (${sm.length} sample file(s)): ${sLines}`); if (!sOk) fails++;
   }

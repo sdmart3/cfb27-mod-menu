@@ -1,0 +1,14 @@
+{
+  "schema": 3,
+  "modid": "showcase-addon",
+  "title": "Showcase Add-on",
+  "version": "1.0.0",
+  "section": "@kicking",
+  "rows": [
+    {
+      "type": "toggle", "key": "onside-assist", "label": "Onside Kick Assist",
+      "description": "Joins the shared Kicking section instead of making a section of its own.",
+      "default": false, "bind": { "type": "api" }
+    }
+  ]
+}
