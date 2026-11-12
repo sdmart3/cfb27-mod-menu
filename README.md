@@ -3,6 +3,7 @@
 One in-game **Mod Settings** tab for every installed mod. A modder writes a small JSON manifest (no code); players get a settings page
 for it, and the DLL applies the choices. Status: **in development, test builds only.**
 
+- `docs/how-to.md`: start here (what each binding does, one example each, joining sections, troubleshooting)
 - `docs/manifest-spec.md`: the manifest format (schema v3)
 - `docs/design.md`: how it works and why
 - `dll-plugin/`: the plugin DLL (C), the Mod Manager plugin loader (C#), the companion page, packaging tools
@@ -17,14 +18,14 @@ One toggle:
 ```json
 {
   "schema": 3,
-  "modid": "jump-catch",
-  "title": "Jump Catch",
+  "modid": "my-mod",
+  "title": "My Mod",
   "version": "1.0.0",
   "rows": [
-    { "type": "toggle", "key": "enabled", "label": "Jump Catches", "default": true,
-      "description": "On: receivers may leap for balls in traffic.",
-      "bind": { "type": "tuning", "asset": "catching/Multiplayer_SP_Catch_DB", "copy": "both",
-                "field": "Catching_AllowedToJumpCatch", "values": [false, true] } }
+    { "type": "toggle", "key": "lineman-catch", "label": "Lineman Catches", "default": false,
+      "description": "On: linemen may catch passes thrown their way.",
+      "bind": { "type": "tuning", "asset": "catching", "copy": "both",
+                "field": "shouldLinemanMultiplayerCatch", "values": [false, true] } }
   ]
 }
 ```
@@ -32,7 +33,7 @@ One toggle:
 Two ways to deliver it:
 
 1. **JSON file:** `Plugins\ModSettings\mods\<modid>.json`.
-2. **Description block:** paste the JSON into your .fbmod description between `[[MODSETTINGS` and `MODSETTINGS]]`.
+2. **Description block:** paste the JSON into your .fbmod description between `[[MODSETTINGS` and `MODSETTINGS]]` (specified; the published DLL reads files only so far).
 
 Check it (Node.js required):
 

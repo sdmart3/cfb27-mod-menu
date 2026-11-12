@@ -82,6 +82,43 @@ function tabPins(buf, secs, name) {
   for (const [m, s] of TAB_METHODS) { const f = out.stock[s / 8]; const b = buf.subarray(f, f + 0x70); if (!b.includes(Buffer.from([0xe8])) || !(b.includes(Buffer.from([0xff, 0x62])) || b.includes(Buffer.from([0xff, 0x60])))) throw new Error(`${name}: slot 0x${s.toString(16)} (${m}) at 0x${(0x140000000 + f).toString(16)} is not the manager forwarder`); }
   return out;
 }
+// The tuning writer (2026-11-11, docs/design.md, section "Tuning binding, 11-11"): the AttribSys asset registry. Every family getter (ballrules =
+// 0x145d17770 on 10-29) builds "<family>[_<name>]<style suffix>" and calls the lookup core (signature below) with rcx = [registry global];
+// the core calls the hash find (its call at core+0x32): djb2-xor over the lower-cased key (h = 5381; h = h*33 ^ c), bucket = h % [map+0x10]
+// (u32), buckets at [map+8], node {key, value, next}, map = registry+0x10. The DLL walks that map itself (read only, never calls it), so the
+// find's first 0x67 bytes (no relocation inside) are pinned to the shape it was written against. typeinfo / fieldinf: the reflection sections.
+const CORE_SIG = Buffer.from('48895c24084c8944241848895424105556574883ec30488d6910', 'hex');
+const FIND_HEAD_N = 0x67;
+function tunePins(buf, secs, name) {
+  const code = (rva) => secs.some((s) => (s.ch & 0x20000000) && rva >= s.rva && rva < s.rva + s.vsize);
+  const sec = (n) => { const s = secs.find((x) => x.name === n); if (!s) throw new Error(`${name}: no ${n} section`); return s; };
+  const hits = []; let p = -1; while ((p = buf.indexOf(CORE_SIG, p + 1)) !== -1) if (code(p)) hits.push(p);
+  if (hits.length !== 1) throw new Error(`${name}: the AttribSys lookup core: ${hits.length} hit(s) (want exactly 1)`);
+  const core = hits[0];
+  if (buf[core + 0x32] !== 0xe8) throw new Error(`${name}: the lookup core does not call the hash find at +0x32`);
+  const find = core + 0x37 + buf.readInt32LE(core + 0x33);
+  const fh = buf.subarray(find, find + FIND_HEAD_N);
+  if (!fh.toString('hex').startsWith('48895c2408') || !fh.includes(Buffer.from('41bb05150000', 'hex')) || !fh.includes(Buffer.from('416bc321', 'hex'))) throw new Error(`${name}: the hash find at 0x${(0x140000000 + find).toString(16)} is not the djb2-xor lookup`);
+  // the registry global: the "ballrules" getter (lea rdx,"ballrules" ... mov rdi,[rip+G] ... call core)
+  const str = []; const pat = Buffer.from('\0ballrules\0', 'latin1'); p = -1; while ((p = buf.indexOf(pat, p + 1)) !== -1) str.push(p + 1);
+  const regs = new Set();
+  for (const s of secs.filter((x) => x.ch & 0x20000000)) {
+    const end = Math.min(s.rva + s.vsize, buf.length) - 7;
+    for (let i = s.rva; i < end; i++) {
+      if (buf[i] !== 0x48 || buf[i + 1] !== 0x8d || buf[i + 2] !== 0x15) continue;
+      if (!str.includes(i + 7 + buf.readInt32LE(i + 3))) continue;
+      for (let j = i + 7; j < i + 0x90; j++) if (buf[j] === 0x48 && buf[j + 1] === 0x8b && buf[j + 2] === 0x3d) {
+        const g = j + 7 + buf.readInt32LE(j + 3);
+        for (let c = j + 7; c < j + 0x20; c++) if (buf[c] === 0xe8 && c + 5 + buf.readInt32LE(c + 1) === core) { regs.add(g); break; }
+      }
+    }
+  }
+  if (regs.size !== 1) throw new Error(`${name}: the registry global: ${regs.size} candidate(s) from the ballrules getter (want exactly 1)`);
+  const reg = [...regs][0], data = sec('.data');
+  if (!(reg >= data.rva && reg < data.rva + data.vsize)) throw new Error(`${name}: the registry global 0x${(0x140000000 + reg).toString(16)} is not in .data`);
+  const ti = sec('typeinfo'), fi = sec('fieldinf');
+  return { core, coreHead: buf.subarray(core, core + 24), find, findHead: fh, reg, ti, fi };
+}
 function fnv(buf) { let h = 0xcbf29ce484222325n; for (const b of buf) { h ^= BigInt(b); h = (h * 0x100000001b3n) & 0xffffffffffffffffn; } return h; }
 function cstr(buf, off) { let e = off; while (e < buf.length && buf[e] >= 0x20 && buf[e] < 0x7f && e - off < 200) e++; return buf[e] === 0 ? buf.toString('latin1', off, e) : null; }
 function pins(file) {
@@ -109,8 +146,8 @@ function pins(file) {
     const w = Buffer.from(buf.subarray(call - 32, call + 32)); w.fill(0, 32, 37);
     sites.push({ name, call, handler, head: buf.subarray(handler, handler + 24), nameRva, hash: fnv(w), fuAt: fu - handler });
   }
-  const tab = tabPins(buf, secs, k.name);
-  return { file, stamp, name: k.name, funcs, sites, tab };
+  const tab = tabPins(buf, secs, k.name), tune = tunePins(buf, secs, k.name);
+  return { file, stamp, name: k.name, funcs, sites, tab, tune };
 }
 const hexb = (b) => [...b].map((x) => '0x' + x.toString(16).padStart(2, '0')).join(',');
 const dumps = process.argv.slice(2); if (!dumps.length) { console.error('usage: node gen-pins.js <dump> [<dump> ...]'); process.exit(2); }
@@ -130,7 +167,11 @@ typedef struct { const char *flow; uint32_t call_rva, handler_rva, name_rva; uin
 /* Layer 2 tab feed: the native settings adapter. vt_stock = every slot as an RVA (all must be stock before any slot is wrapped). */
 #define MS_TAB_VT_MAX 40
 typedef struct { uint32_t vt_rva, global_rva, obj_rva, arr_rva, arr_vt_rva, objh_rva, objh_vt_rva, var_vt_rva; int nvt; uint32_t vt_stock[MS_TAB_VT_MAX]; } MsTabPin;
-typedef struct { const char *name; uint32_t stamp; MsFuncPin funcs[MS_NFUNCS]; MsSitePin sites[MS_NSITES]; MsTabPin tab; } MsBuild;
+/* The tuning writer: the AttribSys registry global, the lookup core (head) and its hash find (first 0x${FIND_HEAD_N.toString(16)} bytes, the map shape
+ * the DLL walks itself), the reflection sections (typeinfo, fieldinf). Read only: nothing of these is ever patched or called. */
+#define MS_TUNE_FINDN ${FIND_HEAD_N}
+typedef struct { uint32_t reg_rva, core_rva, find_rva, ti_rva, ti_size, fi_rva, fi_size; unsigned char core_head[24], find_head[MS_TUNE_FINDN]; } MsTunePin;
+typedef struct { const char *name; uint32_t stamp; MsFuncPin funcs[MS_NFUNCS]; MsSitePin sites[MS_NSITES]; MsTabPin tab; MsTunePin tune; } MsBuild;
 #define MS_NBUILDS ${B.length}
 static const MsBuild MS_BUILDS[MS_NBUILDS] = {
 `;
@@ -142,7 +183,10 @@ for (const b of B) {
   const t = b.tab, X = (v) => `0x${v.toString(16)}u`, A = (v) => `0x${(0x140000000 + v).toString(16)}`;
   h += `    },\n    { ${X(t.vt)}, ${X(t.glob)}, ${X(t.obj0)}, ${X(t.arr)}, ${X(t.arrVt)}, ${X(t.obj)}, ${X(t.objVt)}, ${X(t.varVt)}, ${t.stock.length},\n`;
   h += `      /* settings adapter vtable ${A(t.vt)}, global ${A(t.glob)} -> object ${A(t.obj0)}; array holder ${A(t.arr)} (vt ${A(t.arrVt)}), object holder ${A(t.obj)} (vt ${A(t.objVt)}), Variant vt ${A(t.varVt)} */\n`;
-  h += `      { ${t.stock.map(X).join(',')} } } },\n`;
+  h += `      { ${t.stock.map(X).join(',')} } },\n`;
+  const u = b.tune;
+  h += `    /* tuning: registry global ${A(u.reg)}, lookup core ${A(u.core)}, hash find ${A(u.find)}, typeinfo ${A(u.ti.rva)} (+0x${u.ti.vsize.toString(16)}), fieldinf ${A(u.fi.rva)} (+0x${u.fi.vsize.toString(16)}) */\n`;
+  h += `    { ${X(u.reg)}, ${X(u.core)}, ${X(u.find)}, ${X(u.ti.rva)}, ${X(u.ti.vsize)}, ${X(u.fi.rva)}, ${X(u.fi.vsize)},\n      { ${hexb(u.coreHead)} },\n      { ${hexb(u.findHead)} } } },\n`;
 }
 h += `};\n#endif\n`;
 let ph = `/* patchhashes.h: GENERATED by tools/gen-pins.js. The code sites modsettings.dll writes: one 5-byte handler call per capture flow, one row per
@@ -153,4 +197,4 @@ static const PsExpect PS_EXPECT[${B.length * CAPTURE.length}] = {
 for (const b of B) for (const s of b.sites) ph += `  { ${b.stamp}u, 0x${s.call.toString(16)}u, 5, 0x${s.hash.toString(16).padStart(16, '0')}ull, "modsettings:${s.name}" },   /* ${b.name} */\n`;
 ph += `};\n`;
 fs.writeFileSync(path.join(OUT, 'ms_pins.h'), h); fs.writeFileSync(path.join(OUT, 'patchhashes.h'), ph);
-console.log(`pins: ${B.map((b) => `${b.name} (PE ${b.stamp}): ${b.sites.length} capture sites, ${Object.keys(b.funcs).length} functions, settings adapter vtable 0x${(0x140000000 + b.tab.vt).toString(16)} (${b.tab.stock.length} slots; ${Object.entries(b.tab.slots).map(([m, x]) => m + ' 0x' + x.slot.toString(16)).join(', ')})`).join('; ')} -> src/ms_pins.h, src/patchhashes.h`);
+console.log(`pins: ${B.map((b) => `${b.name} (PE ${b.stamp}): ${b.sites.length} capture sites, ${Object.keys(b.funcs).length} functions, settings adapter vtable 0x${(0x140000000 + b.tab.vt).toString(16)} (${b.tab.stock.length} slots; ${Object.entries(b.tab.slots).map(([m, x]) => m + ' 0x' + x.slot.toString(16)).join(', ')}), tuning registry 0x${(0x140000000 + b.tune.reg).toString(16)} core 0x${(0x140000000 + b.tune.core).toString(16)}`).join('; ')} -> src/ms_pins.h, src/patchhashes.h`);

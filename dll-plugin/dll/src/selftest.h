@@ -284,7 +284,7 @@ static int selftest_guard(const char *dir) {
 
 static int d_type_is(const JDoc *d, int i, int t) { const JNode *x = j_at(d, i); return x && x->type == t; }
 /* ---------------------------------------------------------------- tab: the layer 2 feed (mstab.h) against fake holders + a fake Variant */
-/* spec v3 manifests as the two samples (dll-plugin/samples) + a dynasty row with a slot + one v2 manifest (T_DEMO) */
+/* spec v3 manifests as the two samples (modsettings-dll/samples) + a dynasty row with a slot + one v2 manifest (T_DEMO) */
 static const char *T_V3_AK = "{ \"schema\": 3, \"modid\": \"auto-kick\", \"title\": \"Auto Kick\", \"version\": \"0.3.0\", \"rows\": [\n"
   " { \"type\": \"header\", \"label\": \"Kicking\" },\n"
   " { \"type\": \"toggle\", \"key\": \"enabled\", \"label\": \"Auto Kick\", \"description\": \"The game aims and times field goals and punts for you.\", \"default\": true, \"bind\": { \"type\": \"api\" } },\n"
@@ -376,7 +376,7 @@ static int selftest_tab(const char *dir) {
   T_CHECK(g_th[4].type == 1 && !strcmp(g_th[4].disp, "Reaction Delay"), "list: an 11-stop slider is drawn as a toggle row of stops");
   T_CHECK(g_th[5].type == 1 && !g_th[5].en && !strcmp(g_th[5].disp, "Your DLL reads these with ModSettings_Get."), "list: an info row: greyed, its text as the label");
   int fine = t_row("Fine Slider"); T_CHECK(fine > 0 && g_th[fine].type == 2, "list: a 101-stop slider is the game's slider row (type 2)");
-  T_CHECK(strstr(g_th[t_row("Pocket Depth")].desc, "later Mod Settings version") != NULL, "list: a tuning row says its game-data change is not in this version");
+  T_CHECK(strstr(g_th[t_row("Pocket Depth")].desc, "later Mod Settings version") == NULL, "list: a tuning row no longer says its change waits for a later version (the tuning writer applies it)");
   T_CHECK(strstr(g_th[t_row("Recruit Mode")].desc, "Dynasty setting") != NULL && strstr(g_th[t_row("No Slot")].desc, "without a save slot") != NULL, "list: dynasty rows say so (one without a slot says it is kept, not applied)");
   T_CHECK(g_th[n - 1].key == MS_TAB_KEY_INFO + 2 && strstr(g_th[n - 1].disp, "7 problem(s)") && strstr(g_th[n - 1].desc, "modsettings-status.json"), "list: the last row counts the skipped manifests and points at the status file");
   /* 4. any other category goes to the game, untouched; a missing holder / Variant too */
@@ -731,6 +731,7 @@ static int selftest_load(const char *dir) {
   const char *p = c->problems; while (*p) { const char *e = strchr(p, '\n'); size_t n = e ? (size_t)(e - p) : strlen(p); printf("PROBLEM %.*s\n", (int)n, p); p += n; if (*p) p++; }
   free(c); return 0;
 }
+#include "selftest_tune.h"
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IONBF, 0);
   if (argc > 2 && !strcmp(argv[1], "load")) return selftest_load(argv[2]);
@@ -745,6 +746,7 @@ int main(int argc, char **argv) {
   else if (!strcmp(m, "names") && argc > 2) f = selftest_names(argv[2]);
   else if (!strcmp(m, "rules") && argc > 2) f = selftest_rules(argv[2]);
   else if (!strcmp(m, "dump") && argc > 2) f = selftest_dump(argv[2]);
+  else if (!strcmp(m, "tuning") && argc > 3) f = selftest_tuning(argv[2], argv[3]);
   else if (!strcmp(m, "patchsafe")) { InitializeCriticalSection(&g_cs); f = selftest_patchsafe(argc, argv); }
   else { printf("usage: modsettings-test json | config <dir> | ini <dir> | records <dir> | guard <dir> | tab <dir> | dump <dump> | patchsafe [n]\n"); return 2; }
   printf("self-test: %d failure(s)\n", f);

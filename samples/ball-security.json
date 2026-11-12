@@ -1,0 +1,23 @@
+{
+  "schema": 3,
+  "modid": "example-ball-security",
+  "title": "Ball Security (Example)",
+  "version": "1.0.0",
+  "gameVersion": 4338538,
+  "about": "A small example of the tuning binding. Both rows change the game's own tuning data while the game is running; nothing in your files is edited.",
+  "rows": [
+    { "type": "header", "label": "Ball security" },
+    {
+      "type": "list", "key": "fumbles", "label": "Fumble Chance", "options": ["Fewer", "Stock", "More"], "default": 1, "applies": "now",
+      "description": "Scales how often a ball carrier fumbles after a hit. Stock is 1.0.",
+      "bind": { "type": "tuning", "asset": "ballrules", "field": "Fumble_ChanceMultiplier", "copy": "both", "values": [0.5, 1.0, 2.0] }
+    },
+    { "type": "header", "label": "Catching" },
+    {
+      "type": "toggle", "key": "lineman-catch", "label": "Lineman Catches", "default": false, "applies": "next-game",
+      "description": "On: linemen may catch passes thrown their way.",
+      "bind": { "type": "tuning", "asset": "catching", "field": "shouldLinemanMultiplayerCatch", "copy": "both", "values": [false, true] }
+    },
+    { "type": "info", "label": "Every row starts on As installed: nothing is changed until the player picks a value." }
+  ]
+}

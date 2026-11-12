@@ -44,7 +44,8 @@ category ${rec.feedCategory}) + modsettings.dll 0.2.0-tab1 (wraps the settings a
 only and answers them from the manifests in Plugins\\ModSettings\\mods: one header per mod, then its rows; a change -> settings.json).
 ${OUTNAME === 'modmenu-tab-test' ? '' : 'Follow-up build (not the one lab modmenu-tab-1 tests): + spec v3 "Names, duplicates and clashes", "Adding rows to another mod\'s section", "Safety and behaviour rules".\n'}
 Docs: docs/design.md section 12 ("Layer 2 tab feed, 11-11"), docs/manifest-spec.md.
-Source: dll-plugin/ branch ${branch(REPO)} @ ${git(REPO)}; modsettings/ branch ${branch(path.join(ROOT, 'modsettings'))} @ ${git(path.join(ROOT, 'modsettings'))}.
+Lab: testing/queue/modmenu-tab-1.json (title screen, no save; stage with node testing/runner/stage-modmenu.js stage).
+Source: modsettings-dll/ branch ${branch(REPO)} @ ${git(REPO)}; modsettings/ branch ${branch(path.join(ROOT, 'modsettings'))} @ ${git(path.join(ROOT, 'modsettings'))}.
 Tests (offline): dll/build.js ${nchecks} self-test checks (incl. 'tab': 55 checks against fake holders / Variants; both dumps: the settings
 adapter pins, the five swaps, every refusal) + the load test + the samples load; modsettings/test/tab-emu.js ${teLine}; companion-test.js ${cchecks} ok.
 Game builds: TU 10-13 (PE 1791226072), TU 10-29 (PE 1792187070). Anything else: nothing is swapped and the tab shows "plugin is not running".

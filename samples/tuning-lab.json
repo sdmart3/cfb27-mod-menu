@@ -1,0 +1,20 @@
+{
+  "schema": 3,
+  "modid": "tuning-lab",
+  "title": "Tuning Lab (Test)",
+  "version": "1.0.0",
+  "gameVersion": 4338538,
+  "about": "Lab manifest for modmenu-tuning-1: one field read live (fumble chance) and one read when a game is set up (base wind).",
+  "rows": [
+    {
+      "type": "list", "key": "fumble", "label": "Fumble Chance", "options": ["Stock", "x20"], "default": 0, "applies": "now",
+      "description": "x20: ball carriers fumble on most hits (a lab check, not a real setting).",
+      "bind": { "type": "tuning", "asset": "ballrules", "field": "Fumble_ChanceMultiplier", "copy": "both", "values": [1.0, 20.0] }
+    },
+    {
+      "type": "list", "key": "wind", "label": "Base Wind", "options": ["Calm", "Gale"], "default": 0, "applies": "next-game",
+      "description": "The base wind a game's weather starts from (read when the game is set up).",
+      "bind": { "type": "tuning", "asset": "gameplay_tuning", "field": "wind_base_value", "instance": "[0]", "copy": "both", "values": [0.0, 30.0] }
+    }
+  ]
+}

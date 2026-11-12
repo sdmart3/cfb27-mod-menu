@@ -7,7 +7,7 @@
 const fs = require('fs'), path = require('path'), cp = require('child_process'), crypto = require('crypto');
 function findRoot(d) { for (let i = 0; i < 6; i++, d = path.dirname(d)) if (fs.existsSync(path.join(d, 'reference'))) return d; throw new Error('reference/ not found above ' + __dirname); }
 const DLL = __dirname, OUT = path.join(DLL, 'out'), ROOT = process.env.MS_ROOT || findRoot(path.resolve(DLL, '..'));
-const DUMPS = [['1013', 'TU 10-13', path.join(ROOT, 'reference/memimage-tu-10-13.bin')], ['1029', 'TU 10-29', path.join(ROOT, 'reference/memimage-tu-10-29.bin')]];
+const DUMPS = [['1013', 'TU 10-13', path.join(ROOT, 'reference/CollegeFB27.memdump-2026-10-13.bin')], ['1029', 'TU 10-29', path.join(ROOT, 'reference/CollegeFB27.memdump-2026-10-29.bin')]];
 const noTest = process.argv.includes('--no-test');
 fs.mkdirSync(OUT, { recursive: true });
 const logPath = path.join(OUT, 'build.log'); fs.writeFileSync(logPath, '');
@@ -71,6 +71,7 @@ try {
     for (const m of ['config', 'ini', 'records', 'guard', 'tab', 'names', 'rules']) { const d = path.join(OUT, 't-' + m); fs.rmSync(d, { recursive: true, force: true }); test(m, [m, d], `st-${m}.log`); }
     test('patchsafe', ['patchsafe', '300'], 'st-patchsafe.log');
     for (const [tag, name, dump] of DUMPS) { say(`--- the ${name} dump (pins, the full install, every broken pin)`); test('dump ' + tag, ['dump', dump], `dump-${tag}.log`); }
+    for (const [tag, name, dump] of DUMPS) { say(`--- tuning writer on the ${name} dump (its reflection tables + a fake registry and instances)`); const d = path.join(OUT, 't-tuning-' + tag); fs.rmSync(d, { recursive: true, force: true }); test('tuning ' + tag, ['tuning', dump, d], `st-tuning-${tag}.log`); }
     say(`  ${nok} checks ok in all`);
     say('--- load test (a host that is not the game: "game not found", the status file, the double-load guard)');
     const lt = path.join(OUT, 'loadtest'); fs.rmSync(lt, { recursive: true, force: true }); fs.mkdirSync(path.join(lt, 'mods'), { recursive: true });
@@ -83,7 +84,7 @@ try {
     let st = null; try { st = JSON.parse(fs.readFileSync(path.join(lt, 'modsettings-status.json'), 'utf8')); } catch (e) { st = null; }
     const good = r.code === 0 && /game not found/.test(lg) && /configuration read: 1 mod\(s\) \[modsettings-demo\], 3 row\(s\), 0 problem/.test(lg) && st && st.rows.length === 3 && st.manifests.loaded[0] === 'modsettings-demo';
     say(good ? '  load test ok (status: state ' + st.state + ', 3 rows from the demo manifest)' : '  load test FAILED'); if (!good) fails++;
-    // the two spec v3 sample manifests (dll-plugin/samples, written by the spec v3 pass): must load with no problem, under their modid names
+    // the two spec v3 sample manifests (modsettings-dll/samples, written by the spec v3 pass): must load with no problem, under their modid names
     const SM = path.join(DLL, '..', 'samples'), sd = path.join(OUT, 'samples-load'); fs.rmSync(sd, { recursive: true, force: true }); fs.mkdirSync(path.join(sd, 'mods'), { recursive: true });
     const sm = fs.existsSync(SM) ? fs.readdirSync(SM).filter((f) => f.endsWith('.json')) : [];
     for (const f of sm) { const j = JSON.parse(fs.readFileSync(path.join(SM, f), 'utf8')); fs.copyFileSync(path.join(SM, f), path.join(sd, 'mods', j.modid + '.json')); }

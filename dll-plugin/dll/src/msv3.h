@@ -313,9 +313,11 @@ static void load_manifest_v3(MsCfg *c, JDoc *dp, int root, const char *name) {
       const char *asset = j_str(d, j_get(d, bind, "asset")), *field = j_str(d, j_get(d, bind, "field")), *copy = j_str(d, j_get(d, bind, "copy"));
       if (!asset || !*asset || !field || !*field) { cfg_problem(c, "%s/%s: a tuning bind needs \"asset\" and \"field\"", id, key); continue; }
       if (!copy || (strcmp(copy, "simulation") && strcmp(copy, "base") && strcmp(copy, "both"))) { cfg_problem(c, "%s/%s: bind \"copy\" is required and must be \"simulation\", \"base\" or \"both\"", id, key); continue; }
-      if (o->type == RT_SLIDER) { int sc = j_get(d, bind, "scale"); if (!j_isnum(d, j_get(d, sc, "at-min"), NULL) || !j_isnum(d, j_get(d, sc, "at-max"), NULL)) { cfg_problem(c, "%s/%s: a slider's tuning bind needs \"scale\": { \"at-min\", \"at-max\" }", id, key); continue; } }
+      if (o->type == RT_SLIDER) { int sc = j_get(d, bind, "scale"); if (!j_isnum(d, j_get(d, sc, "at-min"), &o->slo) || !j_isnum(d, j_get(d, sc, "at-max"), &o->shi)) { cfg_problem(c, "%s/%s: a slider's tuning bind needs \"scale\": { \"at-min\", \"at-max\" }", id, key); continue; } }
       else { int vs = j_get(d, bind, "values"); if (!j_at(d, vs) || d->n[vs].type != J_ARR || d->n[vs].count != o->nopt) { cfg_problem(c, "%s/%s: bind \"values\" needs one value per option (%d)", id, key, o->nopt); continue; }
-        int t0 = -1, mixed = 0; for (int x = d->n[vs].first; x >= 0; x = d->n[x].next) { int ty = d->n[x].type == J_FALSE ? J_TRUE : d->n[x].type; if (t0 < 0) t0 = ty; else if (ty != t0) mixed = 1; }
+        int t0 = -1, mixed = 0, k = 0; for (int x = d->n[vs].first; x >= 0; x = d->n[x].next, k++) { int ty = d->n[x].type == J_FALSE ? J_TRUE : d->n[x].type; if (t0 < 0) t0 = ty; else if (ty != t0) mixed = 1;
+          if (k < MS_MAXLIST) o->tv[k] = d->n[x].type == J_NUM ? d->n[x].num : d->n[x].type == J_TRUE ? 1.0 : 0.0; }
+        o->tkind = t0 == J_NUM ? 0 : t0 == J_TRUE ? 1 : 2;
         if (mixed) { o->unavail = 1; o->s_unavail = pool_put(c, "its values are of different types"); logf_("modsettings: %s/%s: bind \"values\" mix types: the row is greyed and never written", id, key); } }   /* rule 7 */
       o->copy = !strcmp(copy, "simulation") ? 1 : !strcmp(copy, "base") ? 2 : 3;
       o->s_asset = pool_put(c, asset); o->s_field = pool_put(c, field); { const char *in = j_str(d, j_get(d, bind, "instance")); o->s_inst = in ? pool_put(c, in) : -1; }

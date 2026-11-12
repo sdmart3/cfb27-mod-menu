@@ -199,7 +199,7 @@ static int tab_rowtype(const MsRow *r) { return r->type == RT_HEADER ? 0 : r->ty
 static void tab_desc(const MsCfg *c, const MsRow *r, char *out, size_t n) {
   const char *base = r->type == RT_INFO ? pool_str(c, r->s_label) : pool_str(c, r->s_desc);
   const char *note = r->store == ST_BAND ? (r->rec >= 0 ? " (Dynasty setting: it goes into the dynasty you have loaded.)" : " (Dynasty setting without a save slot yet: kept, not applied.)")
-                   : r->bind == BD_TUNING ? " (Kept now; changing the game data comes in a later Mod Settings version.)" : "";
+                   : r->bind == BD_TUNING && !g_ku.on ? " (Kept, not applied: the tuning writer is switched off in modsettings.ini.)" : "";
   snprintf(out, n, "%s%s", base, *base ? note : note[0] ? note + 1 : "");
 #define DESC_ADD(...) do { size_t l_ = strlen(out); snprintf(out + l_, n - l_, "%s", l_ ? " " : ""); l_ = strlen(out); snprintf(out + l_, n - l_, __VA_ARGS__); } while (0)
   if (r->copy == 1) DESC_ADD("Simulation style only.");   /* rule 4 */

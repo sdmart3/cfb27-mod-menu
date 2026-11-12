@@ -34,8 +34,8 @@ const files = []; (function walk(d) { for (const f of fs.readdirSync(d)) { const
 const h = (alg, b) => crypto.createHash(alg).update(b).digest('hex');
 const nchecks = (blog.match(/(\d+) checks ok in all/) || [])[1], cchecks = (ctest.match(/companion: (\d+) ok/) || [])[1];
 let txt = `Mod Settings (DLL-lite) layer 1 - TEST BUILD, not a release (${new Date().toISOString()})
-Source: dll-plugin/ (git ${git || 'no commit'}${dirty ? ', with uncommitted changes' : ''}). Docs: docs/design.md (section 10 = O1 / O2,
-section 11 = this build), docs/manifest-spec.md.
+Source: modsettings-dll/ (git ${git || 'no commit'}${dirty ? ', with uncommitted changes' : ''}). Docs: docs/design.md (section 10 = O1 / O2,
+section 11 = this build), docs/design.md.
 Tests: dll/build.js ${nchecks} self-test checks (json, config, ini, records, guard, patchsafe, both dumps' pins + install + every broken pin) + the load
 test; test/companion-test.js ${cchecks} checks (the page rules, parity with the DLL on the same folder, ms-set.js, ms-check.js vs slots.json).
 Game builds: TU 10-13 (PE 1791226072), TU 10-29 (PE 1792187070). Anything else: the DLL installs nothing (values.json + ini bindings still work).

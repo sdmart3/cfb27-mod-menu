@@ -1,7 +1,7 @@
 /* modsettings.c: "Mod Settings", layer 1 (core) of the lightweight DLL version (docs/design.md).
  *
  * WHAT IT DOES. Ships ZERO game files. It reads every installed mod's manifest (Plugins\ModSettings\mods\<id>.json, spec v2:
- * docs/manifest-spec.md), keeps the player's choices in Plugins\ModSettings\values.json (written ONLY by the companion
+ * docs/design.md), keeps the player's choices in Plugins\ModSettings\values.json (written ONLY by the companion
  * page / ms-set.js, never by this DLL), and applies them:
  *   global rows  -> values.json itself (DLL mods read them with the exported ms_get, or through an optional ini binding: this DLL
  *                   rewrites that ONE key of the bound ini atomically, and only when values.json names a value for the row);
@@ -10,7 +10,7 @@
  *                   creates records: each consumer mod's own expression code adds its record at its first Advance, "ensure record").
  * Mods must work without this DLL: every row's bit pattern 0 / its default is what a mod does when nothing was changed.
  *
- * WHERE THE BAND IS WRITTEN (the safe point, docs/design.md section 10, O2). Only on a dynasty SERVER thread, inside the
+ * WHERE THE BAND IS WRITTEN (the safe point, docs/MOD-SETTINGS-DLL-LITE-SCOPE section 10, O2). Only on a dynasty SERVER thread, inside the
  * server handler of a few flows (the RPC thunk's handler call is redirected, the handler runs first, then this pass runs on the same thread
  * with the same flow, the way wsdata does at PracticeHome Enter): MetersFlow::RefreshFormResponse, MySchoolFlow::MySchoolRefreshFormResponse,
  * RosterFlow::EnterResponse, TeamScheduleFlow::EnterResponse (none patched by another DLL of ours). The pass looks the user up with the game's
@@ -65,6 +65,7 @@ static struct { int enabled, band_write, ini_bind, log_captures, poll_ms, cap[4]
 static int g_ini_found;
 /* the layer 2 tab feed (mstab.h): tab = 0 leaves the settings adapter alone; slider_native = 1 draws every slider as the game's slider row */
 static struct { int on, slider_native, log_calls, show_inactive; } g_kt = { 1, 0, 20, 0 };
+static struct { int on, log_reads; } g_ku = { 1, 1 };   /* modsettings.ini: tuning = 0 switches the tuning writer off; log_tuning = 0 drops the per-row read lines */
 static char g_state[24] = "loading", g_reason[300];
 
 static void logf_(const char *fmt, ...) {
@@ -278,6 +279,7 @@ static void *arr_get(void *arr, int i) { void *ifc; int row; void **ivt = sc_ivt
 
 /* ------------------------------------------------------------------ fault guard (per thread; wsdata's VEH + longjmp) */
 static DWORD g_tls = TLS_OUT_OF_INDEXES; static PVOID g_veh; static volatile LONG g_faults, g_disabled;
+static volatile LONG g_tu_off;   /* a fault in the tuning writer: it is off for the session (mstune.h) */
 static volatile uintptr_t g_fault_ip, g_fault_addr;
 static LONG CALLBACK ms_veh(EXCEPTION_POINTERS *ep) {
   DWORD c = ep->ExceptionRecord->ExceptionCode;
@@ -297,7 +299,7 @@ static int ms_guarded2(void (*fn)(void *), void *arg, const char *what, volatile
   jmp_buf jb; void *volatile prev = TlsGetValue(g_tls);
   if (setjmp(jb)) {
     TlsSetValue(g_tls, prev); InterlockedIncrement(&g_faults); InterlockedExchange(off, 1);
-    logf_("modsettings: FAULT in %s (code at %p, address %p): %s is off for this session (global rows, ini bindings and ms_get keep working)", what, (void *)g_fault_ip, (void *)g_fault_addr, off == &g_disabled ? "the band writer" : "the tab feed");
+    logf_("modsettings: FAULT in %s (code at %p, address %p): %s is off for this session (global rows, ini bindings and ms_get keep working)", what, (void *)g_fault_ip, (void *)g_fault_addr, off == &g_disabled ? "the band writer" : off == &g_tu_off ? "the tuning writer" : "the tab feed");
     log_flush(); return 0;
   }
   TlsSetValue(g_tls, &jb); fn(arg); TlsSetValue(g_tls, prev);
@@ -330,6 +332,9 @@ typedef struct {
    * 1 next-game / 2 restart; copy 1 simulation, 2 base, 3 both; unavail + s_unavail = never written, greyed, why; s_also = "also set by ..." */
   int asis, applies, copy, unavail, s_unavail, s_asset, s_field, s_inst, s_also; MsCond cond[2];   /* cond[0] visibleIf, cond[1] enabledIf */
   double smin, smax, sstep;
+  /* tuning binds (mstune.h): tkind 0 numbers, 1 true/false, 2 text; tv[] one value per option (toggle: off, on); slo / shi a slider's scale;
+   * tu_marked = the tuning writer greyed this row (field / asset not found in the running game), as opposed to the manifest's own rules 6 / 7 */
+  int tkind, tu_marked; double tv[MS_MAXLIST], slo, shi;
 } MsRow;
 typedef struct { char id[MS_MID]; int first, nrows, schema, s_title, s_version, s_source, dup, s_section, closed, s_fbmod, active, s_about, npin; long long pin[8]; } MsMod;   /* dup: stored as <modid>@<source>; s_section: "section" (a modid or "@name") */   /* dup: stored as <modid>@<source> (its modid was taken) */
 typedef struct {
@@ -789,7 +794,8 @@ static void ini_load(const char *path) {
   struct { const char *key; int *v; } KEYS[] = { { "enabled", &g_k.enabled }, { "band_write", &g_k.band_write }, { "ini_bind", &g_k.ini_bind }, { "log_captures", &g_k.log_captures },
     { "poll_ms", &g_k.poll_ms }, { "capture_meters", &g_k.cap[0] }, { "capture_myschool", &g_k.cap[1] }, { "capture_roster", &g_k.cap[2] }, { "capture_schedule", &g_k.cap[3] },
     { "log_sync", &g_log_sync }, { "patch_safe", &g_ps.safe }, { "patch_verify", &g_ps.verify },
-    { "tab", &g_kt.on }, { "slider_native", &g_kt.slider_native }, { "log_tab", &g_kt.log_calls }, { "show_inactive", &g_kt.show_inactive } };
+    { "tab", &g_kt.on }, { "slider_native", &g_kt.slider_native }, { "log_tab", &g_kt.log_calls }, { "show_inactive", &g_kt.show_inactive },
+    { "tuning", &g_ku.on }, { "log_tuning", &g_ku.log_reads } };
   FILE *f = fopen(path, "r"); if (!f) return; g_ini_found = 1; char line[512];
   while (fgets(line, sizeof line, f)) {
     char *c = strpbrk(line, ";#"); if (c) *c = 0;
@@ -812,6 +818,7 @@ static void sb_add(Sb *s, const char *fmt, ...) {
 }
 static void sb_q(Sb *s, const char *str) { char q[2400]; if (!j_quote(q, sizeof q, str ? str : "")) snprintf(q, sizeof q, "\"(too long)\""); sb_add(s, "%s", q); }
 static void tab_status(Sb *s);   /* mstab.h */
+static void tune_status(Sb *s);  /* mstune.h */
 static const char *g_st_dir;
 static void status_write(void) {
   Sb s = { 0 }; SYSTEMTIME u; GetSystemTime(&u);
@@ -852,12 +859,13 @@ static void status_write(void) {
     sb_add(&s, "}");
   }
   ReleaseSRWLockShared(&g_cfg_lock);
-  sb_add(&s, "]"); tab_status(&s); sb_add(&s, "}\n");   /* tab_status takes the configuration lock itself (never nested) */
+  sb_add(&s, "]"); tab_status(&s); tune_status(&s); sb_add(&s, "}\n");   /* tab_status takes the configuration lock itself (never nested) */
   char p[MAX_PATH]; snprintf(p, sizeof p, "%s\\" MS_STATUS, g_st_dir ? g_st_dir : g_dir);
   if (s.b) write_atomic(p, s.b, s.n);
   free(s.b);
 }
 #include "mstab.h"   /* layer 2: the in-game Mod Settings tab feed, settings.json writer, change journal */
+#include "mstune.h"  /* Mod Menu step 2: the tuning binding (the game's loaded AttribSys data, in memory) */
 /* reload the configuration when its files changed (worker thread) */
 static unsigned long long g_inputs;
 static int cfg_poll(int force) {
@@ -865,6 +873,7 @@ static int cfg_poll(int force) {
   unsigned long long st = inputs_stamp(); if (!force && st == g_inputs) return 0;
   g_inputs = st; MsCfg *c = cfg_build(); if (!c) return 0;
   EnterCriticalSection(&g_jq_cs); journal_apply(c, g_jq, g_njq); LeaveCriticalSection(&g_jq_cs);   /* tab changes not written yet stay visible */
+  tune_mark(c);   /* rows the tuning writer found not available stay greyed */
   AcquireSRWLockExclusive(&g_cfg_lock); MsCfg *old = g_cfg; g_cfg = c; ReleaseSRWLockExclusive(&g_cfg_lock); free(old);
   logf_("modsettings: configuration %s: %d mod(s) [%s], %d row(s), %d problem(s)%s%s", force ? "read" : "re-read (a file changed)", c->nmods, c->loaded, c->nrows, c->nproblems, c->nproblems ? ": " : "", c->nproblems ? c->problems : "");
   ini_apply_all(c);
@@ -875,7 +884,7 @@ static int cfg_poll(int force) {
 #ifndef AP_TEST
 static int g_game_host;   /* the host is CollegeFB27.exe (the worker installs only then) */
 static DWORD WINAPI worker(LPVOID arg) {
-  (void)arg; ULONGLONG t0 = GetTickCount64(), last_status = 0; int done = !g_game_host || !g_k.enabled, said = 0, tab_done = !g_game_host;
+  (void)arg; ULONGLONG t0 = GetTickCount64(), last_status = 0; int done = !g_game_host || !g_k.enabled, said = 0, tab_done = !g_game_host, tu_done = !g_game_host;
   if (g_game_host && !g_k.enabled) ms_install();
   cfg_poll(1);
   for (;;) {
@@ -887,8 +896,10 @@ static DWORD WINAPI worker(LPVOID arg) {
     }
     if (done && !tab_done) { tab_done = tab_install();   /* after the band pins passed once (the code is unpacked), or their 10 minutes ran out */
       if (!tab_done && GetTickCount64() - t0 > 20ull * 60000ull) { tab_done = 1; snprintf(g_tab_state, sizeof g_tab_state, "failed"); logf_("modsettings: tab feed gave up after 20 minutes: %s", g_tab_reason); } }
+    if (done && !tu_done) tu_done = tune_install();   /* once the band's pins were tried (the code is unpacked); its own read-only pins */
     journal_flush();   /* tab changes -> settings.json, before any re-read */
     cfg_poll(0); applied_save();
+    tune_pass();       /* tuning rows -> the game's loaded data (after the re-read: a change from the tab is written within one poll) */
     ULONGLONG now = GetTickCount64();
     if (InterlockedExchange(&g_status_dirty, 0) || now - last_status > 5000) { status_write(); last_status = now; }
     log_flush();

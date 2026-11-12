@@ -2,7 +2,7 @@
 
 You write one manifest. No code. Players see your rows in the in-game **Mod Settings** tab under your mod's name. Mods that do not
 use Mod Settings are unaffected, and your mod keeps working (on your defaults) for players who do not have it.
-Status: **draft; under active development.** Check your file any time: `node tools/validate.js my-mod.json`.
+Status: **beta 0.1.** Proven in game: the tab and its rows, saved choices (settings.json), and the `tuning` writer (a value reaches the game's loaded data and restores). Not yet proven in game: the gameplay effect of a tuning value, and delivery B (the description block, section 2). Check your file any time: `node tools/validate.js my-mod.json`.
 
 ## 1. The smallest manifest
 
@@ -13,10 +13,10 @@ Status: **draft; under active development.** Check your file any time: `node too
   "title": "Jump Catch",
   "version": "1.0.0",
   "rows": [
-    { "type": "toggle", "key": "enabled", "label": "Jump Catches", "default": true,
-      "description": "On: receivers may leap for balls in traffic.",
-      "bind": { "type": "tuning", "asset": "catching/Multiplayer_SP_Catch_DB", "copy": "both",
-                "field": "Catching_AllowedToJumpCatch", "values": [false, true] } }
+    { "type": "toggle", "key": "enabled", "label": "Lineman Catches", "default": false,
+      "description": "On: linemen may catch passes thrown their way.",
+      "bind": { "type": "tuning", "asset": "catching", "copy": "both",
+                "field": "shouldLinemanMultiplayerCatch", "values": [false, true] } }
   ]
 }
 ```
@@ -37,7 +37,7 @@ My Mod: makes the QB smarter.
 MODSETTINGS]]
 ```
 
-The DLL scans the active Mod Manager pack's .fbmods for block B. If both exist for one `modid`, file A wins. The validator reads both.
+The DLL scans the active Mod Manager pack's .fbmods for block B (**not in the beta DLL yet**: use file A until a build says otherwise). If both exist for one `modid`, file A wins. The validator reads both.
 
 ## 3. Top-level fields
 
@@ -66,24 +66,35 @@ Every row: `type`, `label` (1-40). Choice rows also `key` (permanent id, 1-32 of
 ### 5.1 `tuning`: change game data, no code
 
 ```json
-{ "type": "list", "key": "pocket-depth", "label": "Pocket Depth", "options": ["Shallow", "Stock", "Deep"], "default": 1,
-  "bind": { "type": "tuning", "asset": "blocking/BlockingTuning_Main", "field": "PocketCenter_DefaultOffset",
-            "copy": "simulation", "values": [2.0, 3.0, 4.5] } }
+{ "type": "list", "key": "fumbles", "label": "Fumbles", "options": ["Fewer", "Stock", "More"], "default": 1, "applies": "now",
+  "bind": { "type": "tuning", "asset": "ballrules", "field": "Fumble_ChanceMultiplier",
+            "copy": "simulation", "values": [0.5, 1.0, 2.0] } }
 
-{ "type": "slider", "key": "steer", "label": "Open-Space Steering", "min": 0, "max": 100, "step": 10, "default": 50, "unit": "%",
-  "bind": { "type": "tuning", "asset": "ai/DefenderMovementTuning", "copy": "simulation",
-            "field": "DefenderMovement_OpenSpaceBetweenDefendersInfluenceOnDesiredMoveDirectionOnPassRush",
-            "instance": "Curve.Points[1].y", "scale": { "at-min": 0.0, "at-max": 1.0 } } }
+{ "type": "slider", "key": "fumble-low", "label": "Fumbles, Weak Carriers", "min": 0, "max": 100, "step": 10, "default": 50, "unit": "%",
+  "bind": { "type": "tuning", "asset": "ballrules", "copy": "simulation", "field": "Fumble_BaseChancePointGraph",
+            "instance": "Points[1].Y", "scale": { "at-min": 0.0, "at-max": 0.5 } } }
+
+{ "type": "list", "key": "rush", "label": "CPU Rush Start", "options": ["Low", "High"], "default": 0,
+  "bind": { "type": "tuning", "asset": "gameplay_tuning", "copy": "simulation", "field": "rushMove_AIControlledDefTeamBaseChance",
+            "instance": "[3]", "values": [0.45, 0.6] } }
 ```
 
 | field | meaning |
 |---|---|
-| `asset` | the tuning asset's path |
-| `field` | the field name inside it |
-| `instance` | optional: a path to one value inside the field, for curves (`Curve.Points[2].y`) |
+| `asset` | the tuning asset's name, e.g. `ballrules`, `gameplay_tuning`, `fatiguemanager_small_team`, or its full path (`football/gameplay/attribsys/data/ballrules/ballrules/ballrules`). Name the base asset, not a `_gamestyle_*` file: `copy` picks the style |
+| `field` | the field name inside it, as in the asset (any case) |
+| `instance` | optional: one value inside the field. A curve point: `Points[2].Y` (also `.X`; `Curve.` in front is allowed). A list element: `[3]`. Nested: `[0].Points[1].Y` for a list of curves. Required when the field is a curve or a list |
 | `copy` | **required.** `"simulation"`, `"base"` or `"both"` |
-| `values` | toggle: `[off, on]`. List: one value per option, in order |
+| `values` | toggle: `[off, on]`. List: one value per option, in order. Numbers or `true`/`false` (text values are not supported for tuning: the row is greyed) |
 | `scale` | slider: `{"at-min": v, "at-max": v}`; the value is interpolated linearly between the ends |
+
+**What gets written (the tuning writer).** Only numbers and switches: float, int8-uint32, bool fields (not enums, text, whole curves or lists).
+The value is fitted to the field: whole-number fields are rounded and kept inside their type (a uint32 never goes below 0), a slider stays inside its
+`scale`, true/false into a number field is 1/0. A write never adds curve points or list elements: an index past the end greys the row. A row that is
+hidden (`visibleIf`) or greyed (`enabledIf`, mod not active) counts as "As installed". An asset without style copies (e.g. `coachmodifiers`) has one copy
+that every style reads, so `simulation` writes it. Every write is logged in `modsettings.log` and listed in `modsettings-status.json` ("tuning": each
+field's loaded and current value). `applies`: use `"now"` for curve points and for fields the game reads when it decides (most fields); `"next-game"`
+for values read when a game is set up (weather, for one) or when unsure (the default).
 
 **`copy` matters.** The game keeps a Simulation copy and a base copy of tuning data (Play Now and Dynasty can read different ones).
 Only you know which your mod edits, so you must name it. Wrong choice = the setting seems to do nothing in one mode. Use `both` if unsure.
@@ -97,7 +108,7 @@ Your .fbmod ships the default values; the DLL changes them only when the player 
 { "type": "toggle", "key": "enabled", "label": "Auto Kick", "default": true, "bind": { "type": "api" } }
 ```
 
-Your DLL reads the value (C ABI, stable across versions; never changes without a new function name):
+**Beta 0.1 exports one function, `ms_get(modid, key)`** (same arguments and results as `ModSettings_Get` below, looked up by the name `ms_get`). The names `ModSettings_Get`, `ModSettings_GetFloat` and `ModSettings_OnChange` are the planned stable API and are **not in the beta DLL yet**. The planned form (C ABI, never changes without a new function name):
 
 ```c
 typedef int  (*ms_get_fn)(const char *modid, const char *key);              // toggle: 0/1; list: position; slider: stop number

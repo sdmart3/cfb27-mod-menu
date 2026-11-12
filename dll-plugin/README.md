@@ -2,7 +2,8 @@
 
 One place for the settings of every installed mod, with **zero game files shipped**, so Mod Settings itself clashes with no mod's
 files. Design: `docs/design.md` (sections 10-11 = the O1 / O2 answers and this build). Manifest
-format: `docs/manifest-spec.md`. Status: **test build, offline-proven only; not run in the game yet**.
+format: `docs/design.md`. Status: **test build, offline-proven only; not run in the game yet** (lab draft
+`testing/queue-drafts/modsettings-dll-p2.json`).
 
 ## What layer 1 does
 
