@@ -116,12 +116,12 @@ typedef void (*ms_changed_fn)(const char *modid, const char *key, int value, voi
 typedef int  (*ms_on_change_fn)(const char *modid, ms_changed_fn cb, void *user);   // returns 0 = registered
 
 HMODULE m = GetModuleHandleA("modsettings.dll");
-ms_get_fn get = m ? (ms_get_fn)GetProcAddress(m, "ModSettings_Get") : NULL;
+ms_get_fn get = m ? (ms_get_fn)GetProcAddress(m, "ms_get") : NULL;   // beta 0.1 name; "ModSettings_Get" later
 int v = get ? get("auto-kick", "style") : -1;      // -1 = no Mod Settings or no such row: use your own default
 ```
 
-No DLL? Read `Plugins\ModSettings\settings.json` instead (section 6). Slider values: `ModSettings_Get` returns the stop number
-(0 = `min`); `ModSettings_GetFloat(modid, key)` returns the real value.
+No DLL? Read `Plugins\ModSettings\settings.json` instead (section 6). Slider values: `ms_get` returns the stop number
+(0 = `min`); the planned `ModSettings_GetFloat(modid, key)` will return the real value.
 
 ### 5.3 `dynasty`: for expression (SPEX) mods
 
