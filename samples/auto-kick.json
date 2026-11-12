@@ -1,0 +1,25 @@
+{
+  "schema": 3,
+  "modid": "auto-kick",
+  "title": "Auto Kick",
+  "version": "0.3.0",
+  "rows": [
+    { "type": "header", "label": "Kicking" },
+    {
+      "type": "toggle", "key": "enabled", "label": "Auto Kick",
+      "description": "The game aims and times field goals and punts for you.",
+      "default": true, "bind": { "type": "api" }
+    },
+    {
+      "type": "list", "key": "style", "label": "Kick Style",
+      "description": "Safe takes the sure kick. Aggressive pushes for distance and misses more.",
+      "options": ["Safe", "Balanced", "Aggressive"], "default": 1, "bind": { "type": "api" }
+    },
+    {
+      "type": "slider", "key": "delay-ms", "label": "Reaction Delay",
+      "description": "Milliseconds the DLL waits before it acts. Higher feels more human.",
+      "min": 0, "max": 500, "step": 50, "default": 150, "unit": " ms", "bind": { "type": "api" }
+    },
+    { "type": "info", "label": "Your DLL reads these with ms_get(\"auto-kick\", key) from modsettings.dll." }
+  ]
+}

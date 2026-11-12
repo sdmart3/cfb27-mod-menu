@@ -1,12 +1,12 @@
-# Mod Menu 0.1 (beta): one settings tab for every mod
+# Mod Menu 0.1.1 (beta): a settings tab for every mod
 
-Mod Menu adds a **Mod Settings** tab to the game's Settings screen. You describe your mod's options in one JSON file, no code, and players get switches and choices for them in game. Offline play only. It needs College Football 27 at the 2026-10-29 or 2026-10-13 update and the Mod Manager (the plugin loads when you press Launch there). A mod that does not use it is not affected, and your mod keeps working on its own defaults for players who do not have Mod Menu.
+Mod Menu gives every mod its own tab in the game's Settings screen, named after the mod. You describe your mod's options in one JSON file, no code, and players get switches and choices for them in game. Offline play only. It needs College Football 27 at the 2026-10-29 or 2026-10-13 update and the Mod Manager (the plugin loads when you press Launch there). A mod that does not use it is not affected, and your mod keeps working on its own defaults for players who do not have Mod Menu.
 
 ## Install
 
-The beta package (DLL, loader, tab .fbmod, validator, samples) is built from this repo; no binaries are committed here. Install steps ship with the package: copy its `Plugins` folder into the Mod Manager folder, import `Mod Settings Tab (Test).fbmod`, launch from the Mod Manager, then Settings and RB to **Mod Settings**.
+The beta package (DLL, loader, tab .fbmod, validator, samples) is built from this repo; no binaries are committed here. Install steps ship with the package: copy its `Plugins` folder into the Mod Manager folder, import `Mod Settings Tab (Test).fbmod`, launch from the Mod Manager, then Settings and RB past Coach Adjustments: each mod has its own tab.
 
-## Add a section for your mod
+## Add a tab for your mod
 
 Write one JSON file named `<your-mod-id>.json` and ship it with your mod. Players drop it into `Plugins\ModSettings\mods\` (the folder that holds the two examples). What each part of `bind` means is under "The three bindings" below.
 
@@ -39,17 +39,28 @@ Use the `dynasty` binding only for a setting that must be different in each dyna
 
 Limits, in plain words:
 - 64 mods (manifests) at most.
-- Keep the whole tab to about 100 rows across all mods (headers, text rows and each section's About row count). Tested in game: 116 rows draw fine; with 216 rows the game's Settings screen does not draw at all. The plugin itself accepts more, but the game's menu does not. One manifest holds up to 120 rows.
+- Each mod gets its own tab, named from its `title`, in the order of the `modid`s. Up to 16 tabs; past 16 mods, the 16th tab is **More Mods** and holds the rest.
+- Keep one mod to about 100 rows (headers, text rows and its About row count). Tested in game: tabs of 101 rows draw fine; one list of 216 rows makes the game's Settings screen not draw at all. The limit is per tab, so other mods do not count against yours.
 - A list row has 2 to 12 options.
 - A slider has up to 1001 steps.
 
-What `samples/showcase.json` looks like in game. Custom Kicking Off: the two kicking rows are greyed and Kicker Pressure is hidden.
+What the three samples look like in game, each in its own tab. Compare each picture with the file that made it.
 
-![Showcase section, Custom Kicking Off](images/showcase-off.png)
+**Auto Kick**: [`samples/auto-kick.json`](../samples/auto-kick.json) (an `api` mod).
 
-Custom Kicking On: the kicking rows are live and Kicker Pressure appears.
+![Auto Kick in its own tab](images/pertab-auto-kick.png)
 
-![Showcase section, Custom Kicking On](images/showcase-on.png)
+**Ball Security (Example)**: [`samples/ball-security.json`](../samples/ball-security.json) (`tuning` rows, shown As installed).
+
+![Ball Security in its own tab](images/pertab-ball-security.png)
+
+**Showcase**: [`samples/showcase.json`](../samples/showcase.json) (one of every row type). Custom Kicking is Off, so the two kicking rows are greyed and Kicker Pressure is hidden.
+
+![Showcase in its own tab](images/pertab-showcase.png)
+
+A change made in a mod's tab is saved right away (Reaction Delay, 150 ms to 200 ms):
+
+![Reaction Delay changed in the Auto Kick tab](images/pertab-auto-kick-changed.png)
 
 ## The three bindings
 
@@ -84,9 +95,9 @@ A toggle gives 0 or 1, a list its position, a slider its stop number. You can al
   "bind": { "type": "dynasty", "slot": "my-mod-mode" } }
 ```
 
-## Joining another mod's section, and names
+## Joining another mod's tab, and names
 
-- To add rows under a section you do not own, set `"section": "<that mod's modid>"` at the top of your file. Your rows appear after the owner's, under "added by <your title>". The owner may refuse with `"closed": true`; your rows then show in your own section. If that mod is not installed, your rows also show in your own section.
+- To add rows to another mod's tab, set `"section": "<that mod's modid>"` at the top of your file. Your rows appear after the owner's, under "added by <your title>". The owner may refuse with `"closed": true`; your rows then show in your own section. If that mod is not installed, your rows also show in your own section.
 - A shared section anyone may join starts with `@`, for example `"section": "@penalties"`. Several mods can add to it; each gets its own sub-header.
 - Sections are told apart by `modid`, not by title. The modid is cleaned up before it is compared (`My_Mod`, `my mod` and `MY-MOD` are all `my-mod`).
 - Two files with the same modid and the same mod: the higher `version` is used. Same modid but different mods: both show, and the second one's choices are stored under `modid@<file name>`. Two mods with the same visible title get the file name added to each header.
@@ -105,8 +116,12 @@ A toggle gives 0 or 1, a list its position, a slider its stop number. You can al
 
 The files named here appear in `Plugins\ModSettings\` after the first launch.
 
+Without the plugin running you get one Mod Settings tab like this; your mods' tabs appear once the plugin loads:
+
+![The plugin is not running](images/plugin-not-running.png)
+
 - **The tab says the plugin is not running:** you did not launch from the Mod Manager, the plugin files are missing, or the game version is not 2026-10-29 / 2026-10-13. `modsettings.log` says which. Close the game, check that `ModSettingsPlugin.dll` and the `ModSettings` folder are inside the Mod Manager's `Plugins` folder, and launch from the Mod Manager again.
-- **Your section is missing:** open `modsettings-status.json` and look under `manifests` then `problems`. Each skipped file is listed with the reason. The validator finds the same errors before you start the game.
+- **Your tab is missing:** open `modsettings-status.json` and look under `manifests` then `problems`. Each skipped file is listed with the reason. The validator finds the same errors before you start the game.
 - **A tuning row is greyed:** its text says why ("not available: ..."). The log has a `tuning:` line for every field found and every write.
 - **What a player chose** is in `settings.json`. Delete a key from it to go back to the default.
 
@@ -114,7 +129,8 @@ The files named here appear in `Plugins\ModSettings\` after the first launch.
 
 In game, on the 2026-10-29 update:
 - The tab, the rows (headers, switches, lists, sliders, text), a changed value reaching `settings.json`, and the value still there after leaving and reopening Settings.
-- This build with several mods at once (116 rows): About rows, greyed rows (`enabledIf`), hidden rows (`visibleIf`) and tuning rows in the same tab, as in the screenshots above.
+- One tab per mod, named from each file: 3 and 4 mods at once, with tabs of up to 101 rows, About rows, greyed rows (`enabledIf`), hidden rows (`visibleIf`) and tuning rows, and a change made in a mod's tab saved to `settings.json` (the screenshots above).
+- Up to 16 tabs, with "More Mods" holding the rest, and the single Mod Settings tab above when the plugin is off.
 - Tuning writes: the DLL found the fields in the loaded data, wrote a value, read it back, and put the original value back when the row went to As installed. No crash, no changes to saves.
 
 Not yet proven:

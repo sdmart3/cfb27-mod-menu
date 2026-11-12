@@ -1,7 +1,7 @@
 # CFB 27 Mod Menu (Mod Settings)
 
-One in-game **Mod Settings** tab for every installed mod. A modder writes a small JSON manifest (no code); players get a settings page
-for it, and the DLL applies the choices. Status: **beta 0.1 released**. Download: [releases/latest](https://github.com/sdmart3/cfb27-mod-menu/releases/latest).
+An in-game Settings tab for every installed mod. A modder writes a small JSON manifest (no code); players get a settings page
+for it, and the DLL applies the choices. Status: **beta 0.1.1 released** (one tab per mod). Download: [releases/latest](https://github.com/sdmart3/cfb27-mod-menu/releases/latest).
 
 - `docs/how-to.md`: start here (what each binding does, one example each, joining sections, troubleshooting)
 - `docs/manifest-spec.md`: the manifest format (schema v3)
@@ -13,7 +13,27 @@ for it, and the DLL applies the choices. Status: **beta 0.1 released**. Download
 
 ## What it looks like in game
 
-### 0.1: one Mod Settings tab
+### 0.1.1: one tab per mod
+
+Each mod gets its own tab, named from its JSON (up to 16; more mods share a last "More Mods" tab). These are the three samples, one tab each:
+
+**Auto Kick:** [`samples/auto-kick.json`](samples/auto-kick.json) (an `api` mod).
+
+![Auto Kick in its own tab](docs/images/pertab-auto-kick.png)
+
+**Ball Security (Example):** [`samples/ball-security.json`](samples/ball-security.json) (`tuning` rows, shown As installed).
+
+![Ball Security in its own tab](docs/images/pertab-ball-security.png)
+
+**Showcase:** [`samples/showcase.json`](samples/showcase.json), the same file as the 0.1 shots above.
+
+![Showcase in its own tab](docs/images/pertab-showcase.png)
+
+A choice changed inside a mod's tab is saved like any other (Reaction Delay 150 ms to 200 ms):
+
+![Reaction Delay changed in the Auto Kick tab](docs/images/pertab-auto-kick-changed.png)
+
+### 0.1: one Mod Settings tab for all mods
 
 Made by [`samples/showcase.json`](samples/showcase.json). Custom Kicking Off: the two kicking rows are greyed and Kicker Pressure is hidden.
 
@@ -75,26 +95,6 @@ Custom Kicking On: the kicking rows are live and Kicker Pressure appears.
 ```
 
 </details>
-
-### Coming in 0.2: one tab per mod
-
-Tested in game with a test build of the tab and the 0.1 plugin; not in the 0.1 download yet. Each mod gets its own tab, named from its JSON. These are the three samples, one tab each:
-
-**Auto Kick:** [`samples/dll-mod-sample.json`](samples/dll-mod-sample.json) (an `api` mod).
-
-![Auto Kick in its own tab](docs/images/pertab-auto-kick.png)
-
-**Ball Security (Example):** [`samples/ball-security.json`](samples/ball-security.json) (`tuning` rows, shown As installed).
-
-![Ball Security in its own tab](docs/images/pertab-ball-security.png)
-
-**Showcase:** [`samples/showcase.json`](samples/showcase.json), the same file as the 0.1 shots above.
-
-![Showcase in its own tab](docs/images/pertab-showcase.png)
-
-A choice changed inside a mod's tab is saved like any other (Reaction Delay 150 ms to 200 ms):
-
-![Reaction Delay changed in the Auto Kick tab](docs/images/pertab-auto-kick-changed.png)
 
 ## Modder quick start
 
