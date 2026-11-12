@@ -41,24 +41,30 @@ Use the `dynasty` binding only for a setting that must be different in each dyna
 
 Limits, in plain words:
 - 64 mods (manifests) at most.
-- 1024 rows in total across all mods (headers and text rows count). One manifest holds up to 120 rows.
+- Keep the whole tab to about 100 rows across all mods (headers, text rows and each section's About row count). Tested in game: 116 rows draw fine; with 216 rows the game's Settings screen does not draw at all. The plugin itself accepts more, but the game's menu does not. One manifest holds up to 120 rows.
 - A list row has 2 to 12 options.
 - A slider has up to 1001 steps.
 
-Screenshot: the section `samples/showcase.json` produces in game (`showcase-off.png`: Custom Kicking Off, the two kicking rows greyed and Kicker Pressure hidden; `showcase-on.png`: Custom Kicking On).
+What `samples/showcase.json` looks like in game. Custom Kicking Off: the two kicking rows are greyed and Kicker Pressure is hidden.
+
+![Showcase section, Custom Kicking Off](images/showcase-off.png)
+
+Custom Kicking On: the kicking rows are live and Kicker Pressure appears.
+
+![Showcase section, Custom Kicking On](images/showcase-on.png)
 
 ## The three bindings
 
 A `bind` says what a row does. Pick one per row.
 
-**`tuning`**: changes the game's own tuning data while the game runs. Nothing in any file is edited and the game goes back to its normal values the next launch without Mod Menu.
+**`tuning`**: changes the game's own tuning data while the game runs, for values the game's own settings do not reach (the ones gameplay mods edit). Nothing in any file is edited and the game goes back to its normal values the next launch without Mod Menu.
 
 ```json
-{ "type": "list", "key": "fumbles", "label": "Fumble Chance", "options": ["Fewer", "Stock", "More"], "default": 1, "applies": "now",
-  "bind": { "type": "tuning", "asset": "ballrules", "field": "Fumble_ChanceMultiplier", "copy": "both", "values": [0.5, 1.0, 2.0] } }
+{ "type": "list", "key": "jump-offsides", "label": "Jump-the-Snap Offsides", "options": ["Rare", "Stock", "Often"], "default": 1, "applies": "next-game",
+  "bind": { "type": "tuning", "asset": "penalties", "field": "offsides_penalties_jump_the_snap_number_desired_per_game", "copy": "both", "values": [0.5, 2.0, 4.0] } }
 ```
 
-`copy` is required: the game keeps a Simulation copy and a base copy of tuning data, and only you know which one your mod edits (`simulation`, `base`, or `both` if unsure). It writes numbers and switches only. A `slider` uses `"scale": { "at-min": 0, "at-max": 1 }` instead of `values`, and `"instance"` picks one value inside a list or curve (`"[3]"`, `"Points[1].Y"`). Every tuning row gets an extra first choice, **As installed**, that changes nothing and is the default, so your .fbmod's own values are what plays until the player picks something.
+`copy` is required: the game keeps a Simulation copy and a base copy of tuning data, and only you know which one your mod edits (`simulation`, `base`, or `both` if unsure). It writes numbers and switches only. A `slider` uses `"scale": { "at-min": 0, "at-max": 1 }` instead of `values`, and `"instance"` picks one value inside a list or curve (`"[3]"`, `"Points[1].Y"`). Every tuning row gets an extra first choice, **As installed**, that changes nothing and is the default, so your .fbmod's own values are what plays until the player picks something. Players should set tuning rows from the main menu, before a game starts; test your field in a game before you ship.
 
 **`api`**: for a mod that is itself a DLL. The value is stored in `Plugins\ModSettings\settings.json`; your DLL reads it with the one function this build exports:
 
@@ -106,9 +112,10 @@ A toggle gives 0 or 1, a list its position, a slider its stop number. You can al
 
 In game, on the 2026-10-29 update:
 - The tab, the rows (headers, switches, lists, sliders, text), a changed value reaching `settings.json`, and the value still there after leaving and reopening Settings.
+- This build with several mods at once (116 rows): About rows, greyed rows (`enabledIf`), hidden rows (`visibleIf`) and tuning rows in the same tab, as in the screenshots above.
 - Tuning writes: the DLL found the fields in the loaded data, wrote a value, read it back, and put the original value back when the row went to As installed. No crash, no changes to saves.
 
 Not yet proven:
-- That a written value changes play the way you expect (a first check is queued). Test your own field before you ship.
 - Delivery as a block in the .fbmod description (`[[MODSETTINGS` ... `MODSETTINGS]]`): this build reads files only. I wrote the reader and it passes its offline checks; the game test of a long description, and whether the Mod Manager keeps a long one whole, is pending. Use the file for now.
-- The `dynasty` binding in this build (an earlier build proved the storage writes), the named `ModSettings_Get` / `OnChange` functions (only `ms_get` exists), and the tab and tuning together in one run.
+- The `dynasty` binding in this build (an earlier build proved the storage writes), the named `ModSettings_Get` / `OnChange` functions (only `ms_get` exists).
+

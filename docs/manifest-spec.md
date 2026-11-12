@@ -66,7 +66,7 @@ Every row: `type`, `label` (1-40). Choice rows also `key` (permanent id, 1-32 of
 ### 5.1 `tuning`: change game data, no code
 
 ```json
-{ "type": "list", "key": "fumbles", "label": "Fumbles", "options": ["Fewer", "Stock", "More"], "default": 1, "applies": "now",
+{ "type": "list", "key": "fumbles", "label": "Fumbles", "options": ["Fewer", "Stock", "More"], "default": 1, "applies": "next-game",
   "bind": { "type": "tuning", "asset": "ballrules", "field": "Fumble_ChanceMultiplier",
             "copy": "simulation", "values": [0.5, 1.0, 2.0] } }
 
