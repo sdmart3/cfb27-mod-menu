@@ -2,7 +2,7 @@
 
 You write one manifest. No code. Players see your rows in the in-game **Mod Settings** tab under your mod's name. Mods that do not
 use Mod Settings are unaffected, and your mod keeps working (on your defaults) for players who do not have it.
-Status: **beta 0.1.** Proven in game: the tab and its rows, saved choices (settings.json), and the `tuning` writer (a value reaches the game's loaded data and restores). Not yet proven in game: the gameplay effect of a tuning value, and delivery B (the description block, section 2). Check your file any time: `node tools/validate.js my-mod.json`.
+Status: **beta 0.1.** Proven in game: the tab and its rows, saved choices (settings.json), and the `tuning` writer (a value reaches the game's loaded data and restores). Not yet proven in game: delivery B (the description block, section 2). Check your file any time: `node tools/validate.js my-mod.json`.
 
 ## 1. The smallest manifest
 
