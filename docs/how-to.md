@@ -8,7 +8,7 @@ The beta package (DLL, loader, tab .fbmod, validator, samples) is built from thi
 
 ## Add a section for your mod
 
-Write one file and save it as `Plugins\ModSettings\mods\<your-mod-id>.json`:
+Write one JSON file named `<your-mod-id>.json` and ship it with your mod. Players drop it into `Plugins\ModSettings\mods\` (the folder that holds the two examples). What each part of `bind` means is under "The three bindings" below.
 
 ```json
 {
@@ -26,18 +26,16 @@ Write one file and save it as `Plugins\ModSettings\mods\<your-mod-id>.json`:
 ```
 
 - `modid` is permanent: lowercase letters, digits and `-`. Players' choices are saved under it. `<yourname>-<modname>` keeps it unique.
-- Row types: `toggle`, `list` (2 to 12 `options`, `default` is the position from 0), `slider` (`min`, `max`, `step`, optional `unit`), `header` and `info` (text only).
-- Every choice row needs a `key` (permanent, unique in the file), a `default`, a `bind` and a one-sentence `description` written for players.
+- Row types: `toggle` (`default` is `true` or `false`), `list` (2 to 12 `options`; `default` is the position from 0), `slider` (`min`, `max`, `step`, optional `unit`; `default` is a value between `min` and `max`), `header` and `info` (text only).
+- Every toggle, list and slider row needs a `key` (permanent, unique in the file), a `default`, a `bind` and a one-sentence `description` written for players.
 - `applies` says when a change takes effect: `now`, `next-game` (the default) or `restart`.
-- Check the file before you ship it: `node tools/validate.js my-mod.json`. Every message says which row is wrong and how to fix it.
-
-Delivery as a block inside your .fbmod description is described below under "What is proven".
+- Check the file before you ship it. It needs Node.js: open a terminal in this folder and run `node tools/validate.js path\to\my-mod.json`. Every message says which row is wrong and how to fix it.
 
 ## Where to store a setting
 
 Use the normal (global) storage by default: leave the `bind` as `api` or `tuning` and the choice is kept in `Plugins\ModSettings\settings.json`, one value per player, whatever dynasty is loaded. There is plenty of room.
 
-Use the `dynasty` binding only for a setting that must be different in each dynasty. The dynasty save has a small shared table that every mod shares: in a 64-team league it holds only about 18 options in total across ALL mods, so spend it on things that really need it.
+Use the `dynasty` binding only for a setting that must be different in each dynasty. A dynasty save has room for only about 18 Mod Menu settings in total, shared by ALL mods, so spend it on things that really need it.
 
 Limits, in plain words:
 - 64 mods (manifests) at most.
@@ -61,6 +59,7 @@ A `bind` says what a row does. Pick one per row.
 
 ```json
 { "type": "list", "key": "jump-offsides", "label": "Jump-the-Snap Offsides", "options": ["Rare", "Stock", "Often"], "default": 1, "applies": "next-game",
+  "description": "How often defenders jump the snap and draw offsides.",
   "bind": { "type": "tuning", "asset": "penalties", "field": "offsides_penalties_jump_the_snap_number_desired_per_game", "copy": "both", "values": [0.5, 2.0, 4.0] } }
 ```
 
@@ -77,10 +76,11 @@ int v = get ? get("auto-kick", "style") : -1;   // -1: no Mod Menu or no such ro
 
 A toggle gives 0 or 1, a list its position, a slider its stop number. You can also just read `settings.json`.
 
-**`dynasty`**: for a mod made of expression files that keeps its choice in the dynasty save. The row is mirrored into a shared storage band in the loaded dynasty and your expression reads it there. It needs a slot reserved in `Plugins\ModSettings\slots.json`; ask me for one before you ship, and never change it afterward.
+**`dynasty`**: for a mod made of expression files that keeps its choice in the dynasty save. The row is mirrored into a shared storage band in the loaded dynasty and your expression reads it there. It needs a slot reserved in `Plugins\ModSettings\slots.json`: open an issue on the GitHub repo to get one before you ship, and never change it afterward. This binding has not been tested in game with this build yet.
 
 ```json
 { "type": "list", "key": "mode", "label": "Recruit Mode", "options": ["Stock", "Fast", "Slow"], "default": 0,
+  "description": "How fast recruiting moves in this dynasty.",
   "bind": { "type": "dynasty", "slot": "my-mod-mode" } }
 ```
 
@@ -95,16 +95,18 @@ A toggle gives 0 or 1, a list its position, a slider its stop number. You can al
 ## Safety rules
 
 - Two mods that set the same tuning field: both rows say "also set by <other mod>", and the last change wins.
-- A row that depends on another uses `"visibleIf"` or `"enabledIf"`, for example `{ "key": "lineman-catch", "eq": true }`.
+- A row that depends on another gets `"visibleIf"` (hidden until) or `"enabledIf"` (greyed until), for example `"enabledIf": { "key": "lineman-catch", "eq": true }` on the dependent row.
 - If you list `"fbmod": "<your file name>.fbmod"`, your section is hidden while that mod is off in the Mod Manager.
 - If you list `"gameVersion": <number>`, your tuning rows are never written on a different game version.
 - A field or asset that cannot be found greys its row with the reason. A broken manifest is skipped with a warning; it never stops other mods' rows or crashes the game.
-- Top-level `about` (up to 2000 characters), `credits` and `links` in your manifest add an "About" row to your section.
+- Top-level `about` (up to 2000 characters), `credits` and `links` in your manifest add an "About" row to your section (formats in `docs\manifest-spec.md`).
 
 ## If something does not show up
 
-- **The tab says the plugin is not running:** you did not launch from the Mod Manager, the plugin files are missing, or the game version is not 2026-10-29 / 2026-10-13. `Plugins\ModSettings\modsettings.log` says which.
-- **Your section is missing:** open `Plugins\ModSettings\modsettings-status.json` and look under `manifests` then `problems`. Each skipped file is listed with the reason. The validator finds the same errors before you start the game.
+The files named here appear in `Plugins\ModSettings\` after the first launch.
+
+- **The tab says the plugin is not running:** you did not launch from the Mod Manager, the plugin files are missing, or the game version is not 2026-10-29 / 2026-10-13. `modsettings.log` says which. Close the game, check that `ModSettingsPlugin.dll` and the `ModSettings` folder are inside the Mod Manager's `Plugins` folder, and launch from the Mod Manager again.
+- **Your section is missing:** open `modsettings-status.json` and look under `manifests` then `problems`. Each skipped file is listed with the reason. The validator finds the same errors before you start the game.
 - **A tuning row is greyed:** its text says why ("not available: ..."). The log has a `tuning:` line for every field found and every write.
 - **What a player chose** is in `settings.json`. Delete a key from it to go back to the default.
 
@@ -117,5 +119,5 @@ In game, on the 2026-10-29 update:
 
 Not yet proven:
 - Delivery as a block in the .fbmod description (`[[MODSETTINGS` ... `MODSETTINGS]]`): this build reads files only. I wrote the reader and it passes its offline checks; the game test of a long description, and whether the Mod Manager keeps a long one whole, is pending. Use the file for now.
-- The `dynasty` binding in this build (an earlier build proved the storage writes), the named `ModSettings_Get` / `OnChange` functions (only `ms_get` exists).
+- The `dynasty` binding in this build (an earlier build proved the storage writes).
 
